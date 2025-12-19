@@ -1,0 +1,21 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "16.20.2",
+    "sdksVersions": {
+      "@microsoft/microsoft-graph-client": "3.0.2",
+      "@microsoft/teams-js": "2.12.0"
+    },
+    "version": "1.18.2",
+    "libraryName": "asset-management",
+    "libraryId": "b04a306c-6e1b-483b-8ff3-6fdb71b0bcf3",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "asset-management",
+    "solutionShortDescription": "asset-management description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}
