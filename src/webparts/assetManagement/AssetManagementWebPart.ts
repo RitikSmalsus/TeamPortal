@@ -11,6 +11,7 @@ import { IReadonlyTheme } from '@microsoft/sp-component-base';
 import * as strings from 'AssetManagementWebPartStrings';
 import AssetManagement from './components/AssetManagement';
 import { IAssetManagementProps } from './components/IAssetManagementProps';
+import './custom.css';
 
 export interface IAssetManagementWebPartProps {
   description: string;
