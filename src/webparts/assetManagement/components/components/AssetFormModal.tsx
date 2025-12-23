@@ -378,7 +378,7 @@ const AssetFormModal: React.FC<AssetFormModalProps> = ({ isOpen, onClose, onSave
     if (!isOpen) return null;
 
     return (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} onClick={onClose}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={onClose}>
             <div className="modal-dialog modal-xl modal-dialog-scrollable modal-dialog-centered" onClick={e => e.stopPropagation()}>
                 <form onSubmit={handleSubmit} className="modal-content border-0 shadow-lg">
                     <div className="modal-header border-bottom-0 bg-white p-4">

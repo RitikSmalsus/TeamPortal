@@ -1,4 +1,5 @@
 
+import { Web } from 'sp-pnp-js';
 import { Asset, User, AssetType, AssetStatus, LicenseType, PlatformAccount, Platform, AccountType, AccountStatus, Request, RequestStatus, SoftwareProfile, HardwareProduct, LicenseVariant, ComplianceStatus, HardwareCondition, AssetFamily, Vendor, AssignmentHistory } from '../types';
 
 // Provided Types from Prompt (Implicitly used to structure data)
@@ -96,6 +97,8 @@ const MOCK_USERS_RAW: MockUser[] = [
   { id: 'user-13', displayName: 'Shivdutt Mishra', email: 'shivdutt@example.com' },
   { id: 'user-14', displayName: 'Udbhav Sharma', email: 'udbhav@example.com' },
 ];
+
+
 
 const mockPlatformAccounts: PlatformAccount[] = [
   { id: 'acc-1', userId: 'user-1', platform: Platform.SHAREPOINT, accountType: AccountType.INTERNAL, email: 'abhishek.tiwari@test.com', status: AccountStatus.ACTIVE, createdDate: '15/05/2022' },

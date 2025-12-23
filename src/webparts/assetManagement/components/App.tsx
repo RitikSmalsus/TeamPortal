@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Asset, User, ColumnDef, AssetType, AssetStatus, Request, RequestStatus, AssetFamily, SoftwareProfile, Config, Task, TaskStatus, Vendor, AssignmentHistory } from './types';
-import { getMockAssets, getMockUsers, getMockRequests, getMockAssetFamilies, getMockVendors } from './services/mockData';
+// import { getMockAssets, getMockUsers, getMockRequests, getMockAssetFamilies, getMockVendors } from './services/mockData';
 import DataTable from './components/DataTable';
 import UserProfile from './components/UserProfile';
 import AssetFormModal from './components/AssetFormModal';
@@ -12,6 +12,8 @@ import AdminDashboard from './components/AdminDashboard';
 import TaskModal from './components/TaskModal';
 import { ImportType } from './components/DataImportModal';
 import { Plus, Edit, FileText, Package, UserCheck, PackageOpen, Clock, Users, Tv, KeyRound, ArrowRight, User as UserIcon, ThumbsUp, ThumbsDown, Check, X, Folder, Layers, LineChart, Settings, LayoutDashboard, FileSpreadsheet, Monitor, UserSquare2, ClipboardList, BarChart3, ShieldAlert, List, ChevronDown, LogOut, Briefcase, UserPlus, AlertCircle, TrendingUp, CheckSquare, ListTodo, Search } from 'lucide-react';
+import { Web } from 'sp-pnp-js';
+import { get } from '@microsoft/sp-lodash-subset';
 
 type View = 'dashboard' | 'licenses' | 'hardware' | 'users' | 'requests' | 'reports' | 'admin';
 type ModalMode = 'family' | 'instance';
@@ -321,18 +323,281 @@ const App: React.FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [assetViewMode, setAssetViewMode] = useState<'families' | 'items'>('items');
 
-    useEffect(() => {
-        const mockUsers = getMockUsers();
-        setUsers(mockUsers);
-        setAssetFamilies(getMockAssetFamilies());
-        setAssets(getMockAssets());
-        setRequests(getMockRequests());
-        setVendors(getMockVendors());
+    // Data Mappers
+    const mapSPUserToUser = (spUser: any): User => {
+        // Use FullName directly from SP as requested
+        const fullName = spUser.FullName || spUser.Title || 'Unknown';
 
-        // Set default user (Admin)
-        if (mockUsers.length > 0) {
-            setCurrentUser(mockUsers[0]);
+        // Determine role based on SP "Role" property
+        const spRole = spUser.Role || '';
+        const role = spRole.toLowerCase() === 'admin' ? 'admin' : 'user';
+
+        // Derive first/last names if not explicitly provided
+        const nameParts = fullName.split(' ');
+        const firstName = spUser.FirstName || nameParts[0] || '';
+        const lastName = spUser.LastName || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : '');
+
+        return {
+            id: spUser.Id,
+            fullName: fullName,
+            firstName: firstName,
+            lastName: lastName,
+            email: spUser.Email || spUser.EMail || '',
+            avatarUrl: `https://i.pravatar.cc/150?u=${spUser.Id}`,
+            role: role,
+            isVerified: true,
+            jobTitle: spUser.JobTitle || 'Staff',
+            department: spUser.Department || spUser.ol_Department || 'General',
+            organization: 'Smalsus Infolabs Pvt Ltd',
+            dateOfJoining: spUser.Date_x0020_Of_x0020_Joining || '2023-01-01',
+            dateOfExit: null,
+            businessPhone: spUser.WorkPhone || '',
+            mobileNo: spUser.CellPhone || '',
+            address: spUser.WorkAddress || '',
+            city: spUser.WorkCity || '',
+            postalCode: spUser.WorkZip || '',
+            linkedin: spUser.LinkedIn?.Url || '',
+            twitter: spUser.Twitter?.Url || '',
+            userType: spUser.User_x0020_Type || 'Internal',
+            extension: '',
+            permissionGroups: [],
+            principalName: spUser.Email || '',
+            userStatus: 'Active',
+            userTypeDetail: 'Member',
+            createdDate: spUser.Created || new Date().toISOString(),
+            modifiedDate: spUser.Modified || new Date().toISOString(),
+            createdBy: 'System',
+            modifiedBy: 'System',
+            site: [],
+            typeOfContact: [],
+            platformAccounts: []
+        };
+    };
+
+    const mapSPFamilyToFamily = (item: any): AssetFamily => {
+        const isHardware = item.AssetType === 'Hardware';
+        const base = {
+            id: item.Id.toString(),
+            assetType: isHardware ? AssetType.HARDWARE : AssetType.LICENSE,
+            name: item.Title,
+            productCode: item.ProductCode || 'GEN',
+            category: item.Category || (isHardware ? 'Accessory' : 'External'),
+            createdDate: item.Created,
+            lastModifiedDate: item.Modified,
+            description: item.Description,
+            assignmentModel: (item.AssignmentModel || 'Single') as 'Single' | 'Multiple'
+        };
+
+        if (isHardware) {
+            return {
+                ...base,
+                manufacturer: item.Manufacturer || 'Unknown',
+                modelNumber: item.ModelNumber,
+                assetType: AssetType.HARDWARE
+            } as any; // Cast to avoid complex union checks
+        } else {
+            return {
+                ...base,
+                vendor: item.Vendor || 'Unknown',
+                responsibleUser: currentUser, // Default to current user if not in SP
+                variants: [],
+                assetType: AssetType.LICENSE
+            } as any;
         }
+    };
+
+    const mapSPAssetToAsset = (item: any, families: AssetFamily[], allUsers: User[]): Asset => {
+        if (!item) return {} as Asset;
+
+        // Defensive Title split
+        const titleParts = item.Title ? item.Title.split(' ') : [];
+        const firstWord = titleParts.length > 0 ? titleParts[0] : '';
+
+        // Match by ID or Title
+        const family = families.find(f =>
+            (item.assetRepoId && String(f.id) === String(item.assetRepoId)) ||
+            (item.AssetRepoId && String(f.id) === String(item.AssetRepoId)) ||
+            (firstWord && f.name === firstWord)
+        );
+
+        // Robust ID-based user mapping (works with or without expansion)
+        let assignedUsersArr: User[] = [];
+
+        // 1. Try expanded objects (array or single)
+        if (item.assignToUser) {
+            if (Array.isArray(item.assignToUser)) {
+                assignedUsersArr = item.assignToUser
+                    .map((u: any) => u ? allUsers.find(user => String(user.id) === String(u.Id || u.ID)) : null)
+                    .filter(Boolean) as User[];
+            } else if (typeof item.assignToUser === 'object') {
+                const found = allUsers.find((u: User) => String(u.id) === String(item.assignToUser.Id || item.assignToUser.ID));
+                if (found) assignedUsersArr = [found];
+            }
+        }
+
+        // 2. Fallback to technical ID fields if array is still empty (common if not expanded)
+        if (assignedUsersArr.length === 0) {
+            const rawIds = item.assignToUserId || item.assignToUserId || item.AssignToUserId || item.AssignToUserIds;
+            if (rawIds) {
+                const idArray = Array.isArray(rawIds) ? rawIds : [rawIds];
+                assignedUsersArr = idArray
+                    .map(id => allUsers.find(u => String(u.id) === String(id)))
+                    .filter(Boolean) as User[];
+            }
+        }
+
+        const assignedUser = assignedUsersArr.length > 0 ? assignedUsersArr[0] : null;
+
+        return {
+            id: item.Id ? item.Id.toString() : `error-${Math.random()}`,
+            assetId: item.AssetId || `AST-${item.Id || '0'}`,
+            familyId: item.assetRepoId ? String(item.assetRepoId) : (item.AssetRepoId ? String(item.AssetRepoId) : (family ? family.id : 'unknown')),
+            title: item.Title || 'Unnamed Asset',
+            status: (item.Status as AssetStatus) || AssetStatus.AVAILABLE,
+            purchaseDate: item.PurchaseDate || new Date().toISOString(),
+            cost: item.Cost || 0,
+            created: item.Created || new Date().toISOString(),
+            modified: item.Modified || new Date().toISOString(),
+            createdBy: 'System',
+            modifiedBy: 'System',
+            assetType: item.AssetType === 'Hardware' || item.assetType === 'Hardware' ? AssetType.HARDWARE : AssetType.LICENSE,
+            serialNumber: item.SerialNumber,
+            modelNumber: item.ModelNumber,
+            assignedUser: assignedUser,
+            assignedUsers: assignedUsersArr,
+            email: assignedUser?.email || item.Email || item.assignedUserEmail || '-',
+            renewalDate: item.RenewalDate || item.ExpiryDate || '-',
+            warrantyExpiryDate: item.WarrantyExpiryDate || item.ExpiryDate || '-',
+            location: item.Location
+        };
+    };
+
+    const mapSPRequestToRequest = (item: any, allUsers: User[]): Request => {
+        // Robust ID-based user mapping for requests
+        let requester: User | null = null;
+
+        if (item.RequestedBy) {
+            requester = allUsers.find(u => String(u.id) === String(item.RequestedBy.Id || item.RequestedBy.ID) || (item.RequestedBy.Email && u.email === item.RequestedBy.Email)) || null;
+        }
+
+        // Fallback to technical ID field if not expanded
+        if (!requester && (item.RequestedById || item.requestedById)) {
+            const rid = item.RequestedById || item.requestedById;
+            requester = allUsers.find(u => String(u.id) === String(rid)) || null;
+        }
+
+        const safeRequester = requester || { id: 'unknown', fullName: 'Unknown', email: '', avatarUrl: '', role: 'user' } as User;
+
+        return {
+            id: item.Id ? item.Id.toString() : `req-error-${Math.random()}`,
+            type: item.RequestType || 'Hardware',
+            item: item.Title || 'Unnamed Request',
+            requestedBy: safeRequester,
+            status: (item.Status as RequestStatus) || RequestStatus.PENDING,
+            requestDate: item.RequestDate || item.Created,
+            notes: item.Notes,
+            familyId: item.FamilyId
+        };
+    };
+
+    const getMockAssetFamilies = async () => {
+        try {
+            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+            const data = await res.lists.getByTitle("AssetRepository").items.getAll();
+            console.log("Fetched Families:", data);
+            return data.map(mapSPFamilyToFamily);
+        } catch (error) {
+            console.error("Error fetching Asset Families:", error);
+            return [];
+        }
+    }
+
+    const getMockUsers = async () => {
+        try {
+            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+            const data = await res.lists.getByTitle("Contacts").items.getAll();
+            console.log("Fetched Users:", data);
+            return data.map(mapSPUserToUser);
+        } catch (error) {
+            console.error("Error fetching Users:", error);
+            return [];
+        }
+    }
+
+    const getMockAssets = async (families: AssetFamily[], users: User[]) => {
+        try {
+            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+            // Standard fetch without expansion to avoid OData errors
+            const data = await res.lists.getByTitle("AssetManagementSystem").items.getAll();
+            console.log("Fetched Assets (Raw):", data);
+            return data.map(item => mapSPAssetToAsset(item, families, users));
+        } catch (error) {
+            console.error("Error fetching Assets:", error);
+            return [];
+        }
+    }
+
+    const getMockRequests = async (users: User[]) => {
+        try {
+            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+            // Standard fetch without expansion
+            const data = await res.lists.getByTitle("Request").items.getAll();
+            console.log("Fetched Requests (Raw):", data);
+            return data.map(item => mapSPRequestToRequest(item, users));
+        } catch (error) {
+            console.error("Error fetching Requests:", error);
+            return [];
+        }
+    }
+
+    const getMockVendors = async () => {
+        try {
+            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+            const data = await res.lists.getByTitle("Vendors").items.getAll();
+            return data.map((v: any) => ({
+                id: v.Id.toString(),
+                name: v.Title,
+                website: v.Website,
+                contactName: v.ContactName,
+                email: v.Email
+            }));
+        } catch (error) {
+            console.error("Error fetching Vendors:", error);
+            return [];
+        }
+    }
+
+    useEffect(() => {
+        const loadData = async () => {
+            const usersData = await getMockUsers();
+            setUsers(usersData);
+
+            // Set current user if matches
+            // const current = usersData.find(u => u.email.toLowerCase() === "abhishek.tiwari@hochhuth-consulting.de"); // Example hardcoded check, ideally get current context
+            if (usersData.length > 0) setCurrentUser(usersData[0]);
+
+            const familiesData = await getMockAssetFamilies();
+            setAssetFamilies(familiesData);
+
+            const vendorData = await getMockVendors();
+            setVendors(vendorData);
+
+            // Assets and Requests depend on Families/Users for mapping
+            const assetsData = await getMockAssets(familiesData, usersData);
+            setAssets(assetsData);
+            // DEBUGING
+
+            console.log('=== ASSET DEBUG ===');
+            console.log('Total assets:', assetsData.length);
+            console.log('Licenses with assignedUsers:', assetsData.filter(a => a.assetType === 'License' && a.assignedUsers && a.assignedUsers.length > 0).length);
+            console.log('Hardware with assignedUser:', assetsData.filter(a => a.assetType === 'Hardware' && a.assignedUser).length);
+            console.log('Sample asset:', assetsData[0]);
+
+            const requestsData = await getMockRequests(usersData);
+            setRequests(requestsData);
+        };
+
+        loadData();
     }, []);
 
     // Update view mode when switching users to avoid restricted views
@@ -697,7 +962,8 @@ const App: React.FC = () => {
         setIsAssetModalOpen(true);
     }
 
-    const handleSaveUser = (user: User) => {
+    const handleSaveUser = async (user: User) => {
+        // Optimistic Update: Update local state immediately
         const updatedUsers = users.map(u => u.id === user.id ? user : u);
         setUsers(updatedUsers);
 
@@ -714,6 +980,36 @@ const App: React.FC = () => {
         if (selectedUser?.id === user.id) setSelectedUser(user);
         if (currentUser?.id === user.id) setCurrentUser(user);
         setIsProfileModalOpen(false);
+
+        // Persist to SharePoint
+        try {
+            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+            await res.lists.getByTitle("Contacts").items.getById(Number(user.id)).update({
+                JobTitle: user.jobTitle,
+                Department: user.department,
+                WorkPhone: user.businessPhone,
+                CellPhone: user.mobileNo,
+                WorkAddress: user.address,
+                WorkCity: user.city,
+                WorkZip: user.postalCode,
+                WorkCountry: user.country,
+                Company: user.organization,
+                FirstName: user.firstName,
+                Title: user.lastName,
+                FullName: user.fullName,
+                Role: user.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : 'User',
+                User_x0020_Type: user.userType,
+                Date_x0020_Of_x0020_Joining: user.dateOfJoining,
+                Email: user.email,
+                WebPage: user.webPage ? { Description: user.webPage, Url: user.webPage } : null,
+                LinkedIn: user.linkedin ? { Description: user.linkedin, Url: user.linkedin } : null,
+                Twitter: user.twitter ? { Description: user.twitter, Url: user.twitter } : null
+            });
+            console.log("User profile saved to SharePoint successfully.");
+        } catch (error) {
+            console.error("Error saving user profile to SharePoint:", error);
+            alert("Changes were saved locally but failed to sync to SharePoint. Check console for details.");
+        }
     };
 
     const handleSubmitRequest = (familyId: string, notes: string) => {
@@ -789,13 +1085,13 @@ const App: React.FC = () => {
     const userColumns: ColumnDef<User>[] = [
         { accessorKey: 'fullName', header: 'Name', width: 250, cell: ({ row }) => (<button onClick={() => handleUserClick(row.original)} className="btn btn-link p-0 text-decoration-none d-flex align-items-center gap-2 text-start"> <img src={row.original.avatarUrl} alt={row.original.fullName} className="rounded-circle" style={{ width: '32px', height: '32px' }} /> <span className="fw-medium text-dark">{row.original.fullName}</span> </button>) },
         { accessorKey: 'email', header: 'Email', width: 250 },
-        { accessorKey: 'role', header: 'Role', width: 100, cell: ({ row }) => <span className={`badge ${row.original.role === 'admin' ? 'text-bg-primary' : 'text-bg-light border'}`}>{row.original.role}</span> },
+        { accessorKey: 'role', header: 'Role', width: 100, cell: ({ row }) => <span className={`badge ${row.original.role === 'admin' ? 'text-bg-primary' : 'bg-light text-dark border'}`}>{row.original.role}</span> },
         { accessorKey: 'jobTitle', header: 'Job Title', width: 200 },
         { accessorKey: 'department', header: 'Department', width: 200 },
         {
             accessorKey: 'assets', header: 'Assigned', width: 100, cell: ({ row }) => {
                 const count = assets.filter(a => a.assignedUser?.id === row.original.id || a.assignedUsers?.some(u => u.id === row.original.id)).length;
-                return <span className="badge rounded-pill text-bg-info text-white">{count}</span>
+                return <span className="badge rounded-pill bg-info text-dark">{count}</span>
             }
         },
         { accessorKey: 'view', header: '', width: 100, cell: ({ row }) => (<button onClick={() => handleUserClick(row.original)} className="btn btn-sm btn-outline-primary d-flex align-items-center gap-1 border-0"> View <ArrowRight size={14} /> </button>) }
@@ -808,7 +1104,13 @@ const App: React.FC = () => {
         {
             accessorKey: 'status', header: 'Status', width: 180, cell: ({ row }) => {
                 const status = row.original.status;
-                const colorClasses = { [RequestStatus.PENDING]: 'text-bg-warning text-dark', [RequestStatus.APPROVED]: 'text-bg-success', [RequestStatus.REJECTED]: 'text-bg-danger', [RequestStatus.FULFILLED]: 'text-bg-info text-white', [RequestStatus.IN_PROGRESS]: 'text-bg-primary' };
+                const colorClasses = {
+                    [RequestStatus.PENDING]: 'bg-warning-subtle text-warning border border-warning-subtle',
+                    [RequestStatus.APPROVED]: 'bg-success-subtle text-success border border-success-subtle',
+                    [RequestStatus.REJECTED]: 'bg-danger-subtle text-danger border border-danger-subtle',
+                    [RequestStatus.FULFILLED]: 'bg-info-subtle text-info border border-info-subtle',
+                    [RequestStatus.IN_PROGRESS]: 'bg-primary-subtle text-primary border border-primary-subtle'
+                };
                 const linkedTask = row.original.linkedTaskId ? tasks.find(t => t.id === row.original.linkedTaskId) : null;
 
                 return (
@@ -857,11 +1159,11 @@ const App: React.FC = () => {
         },
         {
             accessorKey: 'status', header: 'Status', width: 120, cell: ({ row }) => {
-                let bgClass = 'text-bg-light';
-                if (row.original.status === AssetStatus.ACTIVE) bgClass = 'text-bg-success';
-                if (row.original.status === AssetStatus.AVAILABLE) bgClass = 'text-bg-info text-white';
-                if (row.original.status === AssetStatus.EXPIRED || row.original.status === AssetStatus.RETIRED) bgClass = 'text-bg-danger';
-                if (row.original.status === AssetStatus.IN_REPAIR || row.original.status === AssetStatus.PENDING) bgClass = 'text-bg-warning text-dark';
+                let bgClass = 'bg-light text-secondary border';
+                if (row.original.status === AssetStatus.ACTIVE) bgClass = 'bg-success-subtle text-success border border-success-subtle';
+                if (row.original.status === AssetStatus.AVAILABLE) bgClass = 'bg-info-subtle text-info border border-info-subtle';
+                if (row.original.status === AssetStatus.EXPIRED || row.original.status === AssetStatus.RETIRED) bgClass = 'bg-danger-subtle text-danger border border-danger-subtle';
+                if (row.original.status === AssetStatus.IN_REPAIR || row.original.status === AssetStatus.PENDING) bgClass = 'bg-warning-subtle text-warning border border-warning-subtle';
                 return <span className={`badge ${bgClass}`}>{row.original.status}</span>
             }
         },
@@ -1014,7 +1316,7 @@ const App: React.FC = () => {
                                         <h6 className="mb-0 fw-bold d-flex align-items-center gap-2">
                                             <AlertCircle size={18} className="text-warning" /> Action Center
                                         </h6>
-                                        <span className="badge text-bg-light border text-secondary">{requests.filter(r => r.status === 'Pending').length} Pending</span>
+                                        <span className="border text-secondary">{requests.filter(r => r.status === 'Pending').length} Pending</span>
                                     </div>
                                     <div className="list-group list-group-flush">
                                         {requests.filter(r => r.status === 'Pending').slice(0, 5).map(req => (
@@ -1051,10 +1353,10 @@ const App: React.FC = () => {
                                     <div className="mb-4">
                                         <div className="d-flex justify-content-between small mb-1">
                                             <span className="text-secondary">Licenses Assigned</span>
-                                            <span className="fw-bold text-dark">{Math.round((assets.filter(a => a.assetType === AssetType.LICENSE && a.assignedUsers?.length).length / assets.filter(a => a.assetType === AssetType.LICENSE).length) * 100 || 0)}%</span>
+                                            <span className="fw-bold text-dark">{Math.round((assets.filter(a => a.assetType === AssetType.LICENSE && a.assignedUsers && a.assignedUsers.length > 0).length / assets.filter(a => a.assetType === AssetType.LICENSE).length) * 100 || 0)}%</span>
                                         </div>
                                         <div className="progress" style={{ height: '8px' }}>
-                                            <div className="progress-bar bg-primary" style={{ width: `${(assets.filter(a => a.assetType === AssetType.LICENSE && a.assignedUsers?.length).length / assets.filter(a => a.assetType === AssetType.LICENSE).length) * 100}%` }}></div>
+                                            <div className="progress-bar bg-primary" style={{ width: `${((assets.filter(a => a.assetType === AssetType.LICENSE && a.assignedUsers && a.assignedUsers.length > 0).length / assets.filter(a => a.assetType === AssetType.LICENSE).length) * 100 || 0)}%` }}></div>
                                         </div>
                                     </div>
                                     <div className="mb-4">
@@ -1063,7 +1365,7 @@ const App: React.FC = () => {
                                             <span className="fw-bold text-dark">{Math.round((assets.filter(a => a.assetType === AssetType.HARDWARE && a.assignedUser).length / assets.filter(a => a.assetType === AssetType.HARDWARE).length) * 100 || 0)}%</span>
                                         </div>
                                         <div className="progress" style={{ height: '8px' }}>
-                                            <div className="progress-bar bg-success" style={{ width: `${(assets.filter(a => a.assetType === AssetType.HARDWARE && a.assignedUser).length / assets.filter(a => a.assetType === AssetType.HARDWARE).length) * 100}%` }}></div>
+                                            <div className="progress-bar bg-success" style={{ width: `${((assets.filter(a => a.assetType === AssetType.HARDWARE && a.assignedUser).length / assets.filter(a => a.assetType === AssetType.HARDWARE).length) * 100 || 0)}%` }}></div>
                                         </div>
                                     </div>
                                     <div className="mt-auto row text-center border-top pt-4">
@@ -1239,7 +1541,7 @@ const App: React.FC = () => {
                         <div className="navbar-brand d-flex align-items-center gap-2 cursor-pointer py-0" onClick={() => handleNavigation('dashboard')} style={{ cursor: 'pointer' }}>
                             <LayoutDashboard className="text-primary" size={32} />
                         </div>
-                        <nav className="nav nav-underline d-none d-md-flex">
+                        <nav className="nav nav-underline d-none d-md-flex gap-2">
                             <NavItem view="dashboard" label="Dashboard" icon={LayoutDashboard} />
                             <NavItem view="licenses" label="Licenses" icon={FileSpreadsheet} />
                             <NavItem view="hardware" label="Hardware" icon={Monitor} />

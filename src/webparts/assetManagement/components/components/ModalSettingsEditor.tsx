@@ -145,7 +145,7 @@ const ModalSettingsEditor: React.FC<ModalSettingsEditorProps> = ({ config, onUpd
 
         // Remove from source if it was in a section
         let newLayout = { ...currentLayout };
-        
+
         if (dragSourceSection) {
             newLayout.tabs = newLayout.tabs.map(t => ({
                 ...t,
@@ -153,7 +153,7 @@ const ModalSettingsEditor: React.FC<ModalSettingsEditorProps> = ({ config, onUpd
             }));
         } else {
             // It was from available fields, ensure it's not anywhere else (shouldn't be, but safe check)
-             newLayout.tabs = newLayout.tabs.map(t => ({
+            newLayout.tabs = newLayout.tabs.map(t => ({
                 ...t,
                 sections: t.sections.map(s => ({ ...s, fields: s.fields.filter(f => f !== draggedField) }))
             }));
@@ -202,93 +202,95 @@ const ModalSettingsEditor: React.FC<ModalSettingsEditorProps> = ({ config, onUpd
     const availableFields = AVAILABLE_FIELDS[selectedContext].filter(f => !assignedFields.has(f));
 
     return (
-        <div className="h-full flex flex-col bg-slate-50 rounded-lg overflow-hidden border border-slate-200">
+        <div className="h-100 d-flex flex-column bg-light rounded shadow-sm overflow-hidden border">
             {/* Header */}
-            <div className="p-4 bg-white border-b border-slate-200 flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                    <label className="text-sm font-bold text-slate-700">Select Modal Context:</label>
-                    <select 
-                        value={selectedContext} 
+            <div className="p-3 bg-white border-bottom d-flex justify-between align-items-center">
+                <div className="d-flex align-items-center gap-3">
+                    <label className="small fw-bold text-secondary text-uppercase mb-0">Modal Context:</label>
+                    <select
+                        value={selectedContext}
                         onChange={(e) => setSelectedContext(e.target.value as ModalContextKey)}
-                        className="text-sm border-slate-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        className="form-select form-select-sm w-auto"
                     >
                         {CONTEXT_OPTIONS.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}
                     </select>
                 </div>
-                <button onClick={handleSave} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-semibold hover:bg-indigo-700 shadow-sm">
+                <button onClick={handleSave} className="btn btn-sm btn-primary fw-bold d-flex align-items-center gap-2 px-3">
                     <Check size={16} /> Save Layout
                 </button>
             </div>
 
-            <div className="flex-grow flex overflow-hidden">
+            <div className="flex-grow-1 d-flex overflow-hidden">
                 {/* Available Fields Sidebar */}
-                <div className="w-64 bg-white border-r border-slate-200 flex flex-col">
-                    <div className="p-4 border-b border-slate-200 bg-slate-50">
-                        <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Available Fields</h4>
+                <div className="bg-white border-end d-flex flex-column" style={{ width: '260px' }}>
+                    <div className="p-3 border-bottom bg-light">
+                        <h6 className="small fw-bold text-secondary text-uppercase mb-0">Available Fields</h6>
                     </div>
-                    <div className="overflow-y-auto p-2 space-y-2 flex-grow">
+                    <div className="overflow-auto p-2 d-flex flex-column gap-2 flex-grow-1">
                         {availableFields.map(field => (
-                            <div 
-                                key={field} 
+                            <div
+                                key={field}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, field, null)}
                                 onDragEnd={handleDragEnd}
-                                className="flex items-center gap-2 p-2 bg-white border border-slate-200 rounded shadow-sm cursor-grab hover:border-indigo-400 active:cursor-grabbing"
+                                className="d-flex align-items-center gap-2 p-2 bg-white border rounded shadow-sm cursor-grab hover-border-primary"
+                                style={{ transition: 'all 0.2s' }}
                             >
-                                <GripVertical size={14} className="text-slate-400"/>
-                                <span className="text-sm text-slate-700 font-mono truncate">{field}</span>
+                                <GripVertical size={14} className="text-secondary opacity-50" />
+                                <span className="small text-dark font-monospace text-truncate">{field}</span>
                             </div>
                         ))}
-                        {availableFields.length === 0 && <p className="text-center text-xs text-slate-400 mt-4">All fields assigned</p>}
+                        {availableFields.length === 0 && <p className="text-center small text-secondary mt-4 fst-italic">All fields assigned</p>}
                     </div>
                 </div>
 
                 {/* Main Preview / Editor Area */}
-                <div className="flex-grow flex flex-col bg-slate-100 overflow-hidden">
+                <div className="flex-grow-1 d-flex flex-column bg-light-subtle overflow-hidden">
                     {/* Tabs Navigation */}
-                    <div className="p-4 border-b border-slate-200 bg-white flex gap-2 items-center overflow-x-auto">
+                    <div className="p-3 border-bottom bg-white d-flex gap-2 items-center overflow-auto">
                         {currentLayout.tabs.map(tab => (
-                            <div key={tab.id} className={`flex items-center group px-3 py-2 rounded-t-md border-b-2 transition-colors cursor-pointer ${activeTabId === tab.id ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-transparent hover:bg-slate-50'}`} onClick={() => setActiveTabId(tab.id)}>
-                                <input 
+                            <div key={tab.id} className={`d-flex items-center px-3 py-2 rounded-top border-bottom border-2 transition-all cursor-pointer ${activeTabId === tab.id ? 'border-primary bg-primary-subtle text-primary fw-bold' : 'border-transparent text-secondary'}`} onClick={() => setActiveTabId(tab.id)}>
+                                <input
                                     value={tab.label}
                                     onChange={(e) => updateTabLabel(tab.id, e.target.value)}
-                                    className="bg-transparent border-none p-0 text-sm font-medium focus:ring-0 w-24 cursor-pointer"
+                                    className="bg-transparent border-0 p-0 fs-6 fw-bold text-inherit w-auto"
+                                    style={{ maxWidth: '120px', color: 'inherit' }}
                                 />
-                                <button onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} className="ml-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100"><X size={12}/></button>
+                                <button onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} className="btn btn-link btn-sm p-0 ms-2 text-danger"><X size={12} /></button>
                             </div>
                         ))}
-                        <button onClick={addTab} className="p-1 rounded-full hover:bg-slate-200 text-slate-500"><Plus size={16}/></button>
+                        <button onClick={addTab} className="btn btn-sm btn-light border p-1 rounded-circle"><Plus size={16} /></button>
                     </div>
 
                     {/* Active Tab Content (Sections) */}
-                    <div className="flex-grow overflow-y-auto p-8">
+                    <div className="flex-grow-1 overflow-auto p-4">
                         {currentTab ? (
-                            <div className="space-y-6 max-w-4xl mx-auto">
+                            <div className="d-flex flex-column gap-4" style={{ maxWidth: '900px', margin: '0 auto' }}>
                                 {currentTab.sections.map((section, index) => (
-                                    <div 
-                                        key={section.id} 
+                                    <div
+                                        key={section.id}
                                         onDragOver={handleDragOver}
                                         onDrop={(e) => handleDrop(e, section.id)}
-                                        className={`bg-white rounded-lg border-2 ${draggedField ? 'border-dashed border-indigo-300' : 'border-slate-200'} p-4 transition-colors`}
+                                        className={`card shadow-sm border-2 ${draggedField ? 'border-primary border-dashed' : 'border-light'}`}
                                     >
-                                        {/* Section Header */}
-                                        <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-2">
-                                            <div className="flex items-center gap-2">
-                                                <LayoutGrid size={16} className="text-indigo-600"/>
-                                                <input 
+                                        <div className="card-header bg-white py-2 px-3 d-flex justify-content-between align-items-center border-0">
+                                            <div className="d-flex align-items-center gap-2">
+                                                <LayoutGrid size={16} className="text-primary" />
+                                                <input
                                                     value={section.title}
                                                     onChange={(e) => updateSection(currentTab.id, section.id, { title: e.target.value })}
-                                                    className="text-sm font-semibold text-slate-800 border-none focus:ring-0 p-0 placeholder:text-slate-400"
+                                                    className="form-control form-control-sm border-0 fw-bold px-0 shadow-none text-dark"
+                                                    style={{ width: '200px' }}
                                                     placeholder="Section Title"
                                                 />
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex items-center bg-slate-100 rounded p-1">
-                                                    <Columns size={14} className="text-slate-500 mr-1"/>
-                                                    <select 
-                                                        value={section.columns} 
+                                            <div className="d-flex align-items-center gap-3">
+                                                <div className="bg-light rounded d-flex align-items-center px-2 py-1">
+                                                    <Columns size={14} className="text-secondary me-2" />
+                                                    <select
+                                                        value={section.columns}
                                                         onChange={(e) => updateSection(currentTab.id, section.id, { columns: parseInt(e.target.value) })}
-                                                        className="text-xs bg-transparent border-none p-0 pr-4 focus:ring-0 text-slate-700 cursor-pointer"
+                                                        className="form-select form-select-sm border-0 bg-transparent p-0 pe-4 shadow-none small fw-bold"
                                                     >
                                                         <option value={1}>1 Col</option>
                                                         <option value={2}>2 Cols</option>
@@ -296,42 +298,44 @@ const ModalSettingsEditor: React.FC<ModalSettingsEditorProps> = ({ config, onUpd
                                                         <option value={4}>4 Cols</option>
                                                     </select>
                                                 </div>
-                                                <div className="flex items-center">
-                                                    <button onClick={() => moveSection(currentTab.id, index, 'up')} disabled={index === 0} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 disabled:opacity-30"><ArrowUp size={14}/></button>
-                                                    <button onClick={() => moveSection(currentTab.id, index, 'down')} disabled={index === currentTab.sections.length - 1} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 disabled:opacity-30"><ArrowDown size={14}/></button>
+                                                <div className="btn-group btn-group-sm border">
+                                                    <button onClick={() => moveSection(currentTab.id, index, 'up')} disabled={index === 0} className="btn btn-light border-0 px-2 disabled-opacity-30"><ArrowUp size={14} /></button>
+                                                    <button onClick={() => moveSection(currentTab.id, index, 'down')} disabled={index === currentTab.sections.length - 1} className="btn btn-light border-0 px-2 disabled-opacity-30"><ArrowDown size={14} /></button>
                                                 </div>
-                                                <button onClick={() => removeSection(currentTab.id, section.id)} className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500"><Trash2 size={14}/></button>
+                                                <button onClick={() => removeSection(currentTab.id, section.id)} className="btn btn-sm btn-outline-danger border-0 p-1"><Trash2 size={14} /></button>
                                             </div>
                                         </div>
 
-                                        {/* Grid Content */}
-                                        <div className={`grid gap-4 min-h-[50px] ${section.fields.length === 0 ? 'bg-slate-50 rounded border-2 border-dashed border-slate-200 flex items-center justify-center' : ''}`} style={{ gridTemplateColumns: `repeat(${section.columns}, minmax(0, 1fr))` }}>
-                                            {section.fields.map(field => (
-                                                <div 
-                                                    key={field} 
-                                                    draggable
-                                                    onDragStart={(e) => handleDragStart(e, field, section.id)}
-                                                    onDragEnd={handleDragEnd}
-                                                    className="flex justify-between items-center p-2 bg-slate-50 border border-slate-200 rounded group cursor-grab active:cursor-grabbing hover:border-indigo-300"
-                                                >
-                                                    <div className="flex items-center gap-2 overflow-hidden">
-                                                        <GripVertical size={14} className="text-slate-400 flex-shrink-0"/>
-                                                        <span className="text-xs font-medium text-slate-700 font-mono truncate">{field}</span>
+                                        <div className="card-body p-3 bg-light-subtle">
+                                            <div className={`row g-2 align-items-start ${section.fields.length === 0 ? 'border border-2 border-dashed rounded text-center py-4 bg-white' : ''}`}>
+                                                {section.fields.map(field => (
+                                                    <div key={field} className={section.columns === 1 ? 'col-12' : section.columns === 2 ? 'col-6' : section.columns === 3 ? 'col-4' : 'col-3'}>
+                                                        <div
+                                                            draggable
+                                                            onDragStart={(e) => handleDragStart(e, field, section.id)}
+                                                            onDragEnd={handleDragEnd}
+                                                            className="d-flex justify-content-between align-items-center p-2 bg-white border rounded shadow-sm cursor-grab active-cursor-grabbing"
+                                                        >
+                                                            <div className="d-flex align-items-center gap-2 overflow-hidden">
+                                                                <GripVertical size={14} className="text-secondary opacity-50 flex-shrink-0" />
+                                                                <span className="small font-monospace text-truncate text-dark">{field}</span>
+                                                            </div>
+                                                            <button onClick={() => removeField(currentTab.id, section.id, field)} className="btn btn-link btn-sm p-0 m-0 text-danger opacity-0 group-hover-opacity-100"><X size={12} /></button>
+                                                        </div>
                                                     </div>
-                                                    <button onClick={() => removeField(currentTab.id, section.id, field)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100"><X size={12}/></button>
-                                                </div>
-                                            ))}
-                                            {section.fields.length === 0 && <span className="text-xs text-slate-400">Drop fields here</span>}
+                                                ))}
+                                                {section.fields.length === 0 && <span className="small text-secondary">Drop fields here</span>}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
-                                
-                                <button onClick={() => addSection(currentTab.id)} className="w-full py-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center justify-center gap-2">
-                                    <Plus size={16}/> Add Section
+
+                                <button onClick={() => addSection(currentTab.id)} className="btn btn-outline-primary border-2 border-dashed py-3 fw-bold d-flex align-items-center justify-content-center gap-2">
+                                    <Plus size={16} /> Add Section
                                 </button>
                             </div>
                         ) : (
-                            <div className="flex items-center justify-center h-full text-slate-400">Select or add a tab to edit layout</div>
+                            <div className="h-100 d-flex align-items-center justify-content-center text-secondary fst-italic">Select or add a tab to edit layout</div>
                         )}
                     </div>
                 </div>

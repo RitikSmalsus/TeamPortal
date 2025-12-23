@@ -21,18 +21,18 @@ const RequestAssetModal: React.FC<RequestAssetModalProps> = ({ isOpen, onClose, 
     if (!category) return assetFamilies;
 
     const categoryMap = {
-        'Microsoft': { type: AssetType.LICENSE, category: 'Microsoft' },
-        'External': { type: AssetType.LICENSE, category: 'External' },
-        'Hardware': { type: AssetType.HARDWARE, category: null }
+      'Microsoft': { type: AssetType.LICENSE, category: 'Microsoft' },
+      'External': { type: AssetType.LICENSE, category: 'External' },
+      'Hardware': { type: AssetType.HARDWARE, category: null }
     };
-    
+
     const catDetails = categoryMap[category];
-    
+
     return assetFamilies.filter(family => {
-        if (catDetails.type === AssetType.HARDWARE) {
-            return family.assetType === AssetType.HARDWARE;
-        }
-        return family.assetType === catDetails.type && family.category === catDetails.category;
+      if (catDetails.type === AssetType.HARDWARE) {
+        return family.assetType === AssetType.HARDWARE;
+      }
+      return family.assetType === catDetails.type && family.category === catDetails.category;
     });
   }, [assetFamilies, category]);
 
@@ -55,71 +55,84 @@ const RequestAssetModal: React.FC<RequestAssetModalProps> = ({ isOpen, onClose, 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-slate-800">New Asset Request{category && `: ${category}`}</h2>
-          <button onClick={onClose} className="p-1 rounded-full text-slate-400 hover:bg-slate-100">
-            <X size={24} />
-          </button>
-        </div>
-        
-        <div className="p-6 overflow-y-auto">
-            <p className="text-sm text-slate-600 mb-4">Select an asset type from the list below to submit a request for <span className="font-semibold">{user.fullName}</span>.</p>
-            <div className="relative mb-4">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <input
-                type="text"
-                placeholder="Search for an asset type..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
-                />
-            </div>
-
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2 mb-4">
-                {searchedFamilies.length > 0 ? searchedFamilies.map(family => (
-                    <div 
-                        key={family.id} 
-                        onClick={() => setSelectedFamilyId(family.id)}
-                        className={`p-3 rounded-md border cursor-pointer transition-all duration-150 ${selectedFamilyId === family.id ? 'bg-indigo-50 border-indigo-500 ring-2 ring-indigo-300' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
-                    >
-                        <p className="font-semibold text-sm text-slate-800">{family.name}</p>
-                        <p className="text-xs text-slate-500">{family.description || `${family.category} - ${family.assetType === AssetType.HARDWARE ? (family as HardwareProduct).manufacturer : (family as SoftwareProfile).vendor}`}</p>
-                    </div>
-                )) : (
-                    <div className="text-center py-8 text-slate-500">
-                        <p>No asset families found{category && ` in the ${category} category`}.</p>
-                    </div>
-                )}
-            </div>
-            
+    <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 1060 }} onClick={onClose}>
+      <div className="modal-dialog modal-dialog-centered modal-lg" onClick={e => e.stopPropagation()}>
+        <div className="modal-content border-0 shadow-lg">
+          <div className="modal-header border-bottom bg-white p-4">
             <div>
-              <label htmlFor="request-notes" className="block text-sm font-medium text-slate-700 mb-1">Notes (Optional)</label>
-              <textarea
-                id="request-notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={3}
-                placeholder="Provide a reason for your request..."
-                className="w-full p-2 border border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
-              />
+              <h5 className="modal-title fw-bold text-dark">New Asset Request{category && `: ${category}`}</h5>
+              <p className="text-secondary small mb-0 mt-1">Submit a request for <span className="fw-bold">{user.fullName}</span></p>
             </div>
-        </div>
+            <button type="button" className="btn-close" onClick={onClose}></button>
+          </div>
 
-        <div className="p-6 bg-slate-50 border-t border-slate-200 flex justify-end items-center gap-3">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+          <div className="modal-body p-4 bg-light-subtle">
+            <div className="card border-0 shadow-sm p-4 mb-4">
+              <div className="relative mb-4">
+                <label className="form-label small fw-bold text-secondary text-uppercase" style={{ fontSize: '11px' }}>Search Asset Type</label>
+                <div className="input-group input-group-sm">
+                  <span className="input-group-text bg-white border-light-subtle"><Search size={14} className="text-secondary" /></span>
+                  <input
+                    type="text"
+                    placeholder="Search for an asset type..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="form-control border-light-subtle"
+                  />
+                </div>
+              </div>
+
+              <div className="list-group list-group-flush border rounded-3 overflow-auto pr-2 mb-4" style={{ maxHeight: '300px' }}>
+                {searchedFamilies.length > 0 ? searchedFamilies.map(family => (
+                  <button
+                    key={family.id}
+                    onClick={() => setSelectedFamilyId(family.id)}
+                    className={`list-group-item list-group-item-action border-bottom p-3 text-start ${selectedFamilyId === family.id ? 'active bg-primary-subtle border-primary' : ''}`}
+                    type="button"
+                  >
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <p className={`fw-bold mb-0 ${selectedFamilyId === family.id ? 'text-primary' : 'text-dark'}`}>{family.name}</p>
+                      <span className={`badge ${family.assetType === AssetType.LICENSE ? 'text-bg-info' : 'text-bg-warning'} text-white`}>{family.assetType}</span>
+                    </div>
+                    <p className={`small mb-0 ${selectedFamilyId === family.id ? 'text-primary' : 'text-secondary'}`} style={{ fontSize: '12px' }}>
+                      {family.description || `${family.category} - ${family.assetType === AssetType.HARDWARE ? (family as HardwareProduct).manufacturer : (family as SoftwareProfile).vendor}`}
+                    </p>
+                  </button>
+                )) : (
+                  <div className="text-center py-5 text-secondary small fst-italic">
+                    <p className="mb-0">No asset families found{category && ` in the ${category} category`}.</p>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="request-notes" className="form-label small fw-bold text-secondary text-uppercase" style={{ fontSize: '11px' }}>Notes (Optional)</label>
+                <textarea
+                  id="request-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Provide a reason for your request..."
+                  className="form-control"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="modal-footer border-top-0 bg-white p-4">
+            <button type="button" onClick={onClose} className="btn btn-light fw-bold px-4">
               Cancel
             </button>
-            <button 
-                type="button" 
-                onClick={handleSubmit} 
-                disabled={!selectedFamilyId}
-                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed"
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!selectedFamilyId}
+              className="btn btn-primary fw-bold px-4 shadow-sm"
             >
               Submit Request
             </button>
           </div>
+        </div>
       </div>
     </div>
   );
