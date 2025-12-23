@@ -87,7 +87,7 @@ const RequestAssetModal: React.FC<RequestAssetModalProps> = ({ isOpen, onClose, 
                   <button
                     key={family.id}
                     onClick={() => setSelectedFamilyId(family.id)}
-                    className={`list-group-item list-group-item-action border-bottom p-3 text-start ${selectedFamilyId === family.id ? 'active bg-primary-subtle border-primary' : ''}`}
+                    className={`list-group-item list-group-item-action border-bottom p-3 text-start ${selectedFamilyId === family.id ? 'bg-primary-subtle border-primary border-2 z-1' : ''}`}
                     type="button"
                   >
                     <div className="d-flex justify-content-between align-items-center mb-1">

@@ -1012,7 +1012,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleSubmitRequest = (familyId: string, notes: string) => {
+    const handleSubmitRequest = async (familyId: string, notes: string) => {
         const family = assetFamilies.find(f => f.id === familyId);
         const user = requestingUser;
 
@@ -1034,6 +1034,24 @@ const App: React.FC = () => {
 
         setRequests(prev => [newRequest, ...prev]);
         closeRequestModal();
+
+        // Persist to SharePoint
+        try {
+            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+            await res.lists.getByTitle("Request").items.add({
+                Title: family.name,
+                RequestType: family.assetType === AssetType.HARDWARE ? 'Hardware' : 'Software',
+                AssetFamilyId: Number(family.id) || null,
+                Status: 'Pending',
+                Comment: notes,
+                RequestDate: new Date().toISOString(),
+                RequestedById: Number(user.id)
+            });
+            console.log("Request saved to SharePoint successfully.");
+        } catch (error) {
+            console.error("Error saving request to SharePoint:", error);
+            alert("Request was saved locally but failed to sync to SharePoint. Check console for details.");
+        }
     };
 
     const handleNewRequest = (category: RequestCategory) => {
