@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Asset, User, ColumnDef, AssetType, AssetStatus, Request, RequestStatus, AssetFamily, SoftwareProfile, Config, Task, TaskStatus, Vendor, AssignmentHistory } from './types';
+import { Asset, User, ColumnDef, AssetType, AssetStatus, Request, RequestStatus, AssetFamily, SoftwareProfile, Config, Task, TaskStatus, Vendor, AssignmentHistory, LicenseType, UserRole, HardwareCondition } from './types';
 // import { getMockAssets, getMockUsers, getMockRequests, getMockAssetFamilies, getMockVendors } from './services/mockData';
 import DataTable from './components/DataTable';
 import UserProfile from './components/UserProfile';
@@ -323,246 +323,449 @@ const App: React.FC = () => {
     const [activeView, setActiveView] = useState<View>('dashboard');
     const [assetViewMode, setAssetViewMode] = useState<'families' | 'items'>('items');
 
-    // Data Mappers
-    const mapSPUserToUser = (spUser: any): User => {
-        // Use FullName directly from SP as requested
-        const fullName = spUser.FullName || spUser.Title || 'Unknown';
-
-        // Determine role based on SP "Role" property
-        const spRole = spUser.Role || '';
-        const role = spRole.toLowerCase() === 'admin' ? 'admin' : 'user';
-
-        // Derive first/last names if not explicitly provided
-        const nameParts = fullName.split(' ');
-        const firstName = spUser.FirstName || nameParts[0] || '';
-        const lastName = spUser.LastName || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : '');
-
-        return {
-            id: spUser.Id,
-            fullName: fullName,
-            firstName: firstName,
-            lastName: lastName,
-            email: spUser.Email || spUser.EMail || '',
-            avatarUrl: `https://i.pravatar.cc/150?u=${spUser.Id}`,
-            role: role,
-            isVerified: true,
-            jobTitle: spUser.JobTitle || 'Staff',
-            department: spUser.Department || spUser.ol_Department || 'General',
-            organization: 'Smalsus Infolabs Pvt Ltd',
-            dateOfJoining: spUser.Date_x0020_Of_x0020_Joining || '2023-01-01',
-            dateOfExit: null,
-            businessPhone: spUser.WorkPhone || '',
-            mobileNo: spUser.CellPhone || '',
-            address: spUser.WorkAddress || '',
-            city: spUser.WorkCity || '',
-            postalCode: spUser.WorkZip || '',
-            linkedin: spUser.LinkedIn?.Url || '',
-            twitter: spUser.Twitter?.Url || '',
-            userType: spUser.User_x0020_Type || 'Internal',
-            extension: '',
-            permissionGroups: [],
-            principalName: spUser.Email || '',
-            userStatus: 'Active',
-            userTypeDetail: 'Member',
-            createdDate: spUser.Created || new Date().toISOString(),
-            modifiedDate: spUser.Modified || new Date().toISOString(),
-            createdBy: 'System',
-            modifiedBy: 'System',
-            site: [],
-            typeOfContact: [],
-            platformAccounts: []
-        };
-    };
-
-    const mapSPFamilyToFamily = (item: any): AssetFamily => {
-        const isHardware = item.AssetType === 'Hardware';
-        const base = {
-            id: item.Id.toString(),
-            assetType: isHardware ? AssetType.HARDWARE : AssetType.LICENSE,
-            name: item.Title,
-            productCode: item.ProductCode || 'GEN',
-            category: item.Category || (isHardware ? 'Accessory' : 'External'),
-            createdDate: item.Created,
-            lastModifiedDate: item.Modified,
-            description: item.Description,
-            assignmentModel: (item.AssignmentModel || 'Single') as 'Single' | 'Multiple'
-        };
-
-        if (isHardware) {
-            return {
-                ...base,
-                manufacturer: item.Manufacturer || 'Unknown',
-                modelNumber: item.ModelNumber,
-                assetType: AssetType.HARDWARE
-            } as any; // Cast to avoid complex union checks
-        } else {
-            return {
-                ...base,
-                vendor: item.Vendor || 'Unknown',
-                responsibleUser: currentUser, // Default to current user if not in SP
-                variants: [],
-                assetType: AssetType.LICENSE
-            } as any;
-        }
-    };
-
-    const mapSPAssetToAsset = (item: any, families: AssetFamily[], allUsers: User[]): Asset => {
-        if (!item) return {} as Asset;
-
-        // Defensive Title split
-        const titleParts = item.Title ? item.Title.split(' ') : [];
-        const firstWord = titleParts.length > 0 ? titleParts[0] : '';
-
-        // Match by ID or Title
-        const family = families.find(f =>
-            (item.assetRepoId && String(f.id) === String(item.assetRepoId)) ||
-            (item.AssetRepoId && String(f.id) === String(item.AssetRepoId)) ||
-            (firstWord && f.name === firstWord)
-        );
-
-        // Robust ID-based user mapping (works with or without expansion)
-        let assignedUsersArr: User[] = [];
-
-        // 1. Try expanded objects (array or single)
-        if (item.assignToUser) {
-            if (Array.isArray(item.assignToUser)) {
-                assignedUsersArr = item.assignToUser
-                    .map((u: any) => u ? allUsers.find(user => String(user.id) === String(u.Id || u.ID)) : null)
-                    .filter(Boolean) as User[];
-            } else if (typeof item.assignToUser === 'object') {
-                const found = allUsers.find((u: User) => String(u.id) === String(item.assignToUser.Id || item.assignToUser.ID));
-                if (found) assignedUsersArr = [found];
-            }
-        }
-
-        // 2. Fallback to technical ID fields if array is still empty (common if not expanded)
-        if (assignedUsersArr.length === 0) {
-            const rawIds = item.assignToUserId || item.assignToUserId || item.AssignToUserId || item.AssignToUserIds;
-            if (rawIds) {
-                const idArray = Array.isArray(rawIds) ? rawIds : [rawIds];
-                assignedUsersArr = idArray
-                    .map(id => allUsers.find(u => String(u.id) === String(id)))
-                    .filter(Boolean) as User[];
-            }
-        }
-
-        const assignedUser = assignedUsersArr.length > 0 ? assignedUsersArr[0] : null;
-
-        return {
-            id: item.Id ? item.Id.toString() : `error-${Math.random()}`,
-            assetId: item.AssetId || `AST-${item.Id || '0'}`,
-            familyId: item.assetRepoId ? String(item.assetRepoId) : (item.AssetRepoId ? String(item.AssetRepoId) : (family ? family.id : 'unknown')),
-            title: item.Title || 'Unnamed Asset',
-            status: (item.Status as AssetStatus) || AssetStatus.AVAILABLE,
-            purchaseDate: item.PurchaseDate || new Date().toISOString(),
-            cost: item.Cost || 0,
-            created: item.Created || new Date().toISOString(),
-            modified: item.Modified || new Date().toISOString(),
-            createdBy: 'System',
-            modifiedBy: 'System',
-            assetType: item.AssetType === 'Hardware' || item.assetType === 'Hardware' ? AssetType.HARDWARE : AssetType.LICENSE,
-            serialNumber: item.SerialNumber,
-            modelNumber: item.ModelNumber,
-            assignedUser: assignedUser,
-            assignedUsers: assignedUsersArr,
-            email: assignedUser?.email || item.Email || item.assignedUserEmail || '-',
-            renewalDate: item.RenewalDate || item.ExpiryDate || '-',
-            warrantyExpiryDate: item.WarrantyExpiryDate || item.ExpiryDate || '-',
-            location: item.Location
-        };
-    };
-
-    const mapSPRequestToRequest = (item: any, allUsers: User[]): Request => {
-        // Robust ID-based user mapping for requests
-        let requester: User | null = null;
-
-        if (item.RequestedBy) {
-            requester = allUsers.find(u => String(u.id) === String(item.RequestedBy.Id || item.RequestedBy.ID) || (item.RequestedBy.Email && u.email === item.RequestedBy.Email)) || null;
-        }
-
-        // Fallback to technical ID field if not expanded
-        if (!requester && (item.RequestedById || item.requestedById)) {
-            const rid = item.RequestedById || item.requestedById;
-            requester = allUsers.find(u => String(u.id) === String(rid)) || null;
-        }
-
-        const safeRequester = requester || { id: 'unknown', fullName: 'Unknown', email: '', avatarUrl: '', role: 'user' } as User;
-
-        return {
-            id: item.Id ? item.Id.toString() : `req-error-${Math.random()}`,
-            type: item.RequestType || 'Hardware',
-            item: item.Title || 'Unnamed Request',
-            requestedBy: safeRequester,
-            status: (item.Status as RequestStatus) || RequestStatus.PENDING,
-            requestDate: item.RequestDate || item.Created,
-            notes: item.Notes,
-            familyId: item.FamilyId
-        };
-    };
-
-    const getMockAssetFamilies = async () => {
+    const getDate = (date: any) => {
+        if (!date) return null;
         try {
-            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
-            const data = await res.lists.getByTitle("AssetRepository").items.getAll();
-            console.log("Fetched Families:", data);
-            return data.map(mapSPFamilyToFamily);
+            const d = new Date(date);
+            return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+        } catch {
+            return null;
+        }
+    };
+
+    //API calls to get data from backend
+    const getMockAssetFamilies = async () => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+        try {
+            const data = await res.lists.getByTitle("AssetRepository").items.select("ID", "Title", "Topic", "AssetType", "Prefix", "VendorName/Title", "StartDate", "EndDate", "TotalCount", "Variants", "Category", "AssignmentModel", "Description", "ProductCode", "configuration", "cost").expand("VendorName").get();
+            console.log(data)
+            const formattedData: AssetFamily[] = data.map((item: any) => {
+                const isHardware = item.AssetType === 'Hardware';
+                const base = {
+                    id: `repo-${item.ID || item.Id}`,
+                    name: item.Title, // UI expects 'name'
+                    assetType: item.AssetType === 'Hardware' ? AssetType.HARDWARE : AssetType.LICENSE,
+                    productCode: item.ProductCode || item.Prefix,
+                    description: item.Description || item.Topic || '',
+                    category: item.Category || (isHardware ? 'Hardware' : 'External'),
+                    assignmentModel: item.AssignmentModel || (isHardware ? 'Single' : 'Multiple'),
+                    createdDate: item.Created || item.StartDate || new Date().toISOString(),
+                    lastModifiedDate: item.Modified || item.EndDate || new Date().toISOString(),
+                    totalCount: item.TotalCount || 0,
+                    cost: item.cost || 0,
+                };
+
+                if (isHardware) {
+                    return {
+                        ...base,
+                        assetType: AssetType.HARDWARE,
+                        manufacturer: item.VendorName?.Title || 'Generic',
+                    } as any; // Cast as HardwareProduct
+                } else {
+                    let variants = [{ id: `var-${item.ID}`, name: 'Standard', licenseType: LicenseType.SUBSCRIPTION, cost: 0 }];
+                    if (item.Variants) {
+                        try {
+                            variants = JSON.parse(item.Variants);
+                        } catch (e) {
+                            console.error("Error parsing variants for", item.Title, e);
+                        }
+                    }
+                    return {
+                        ...base,
+                        assetType: AssetType.LICENSE,
+                        vendor: item.VendorName?.Title || 'Unknown',
+                        variants: variants
+                    } as any; // Cast as SoftwareProfile
+                }
+            });
+            return formattedData;
         } catch (error) {
-            console.error("Error fetching Asset Families:", error);
+            console.log("Error fetching asset families:", error);
             return [];
         }
     }
 
     const getMockUsers = async () => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         try {
-            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
             const data = await res.lists.getByTitle("Contacts").items.getAll();
-            console.log("Fetched Users:", data);
-            return data.map(mapSPUserToUser);
+
+            // Fetch attachments for all users in parallel
+            const usersWithAttachments = await Promise.all(
+                data.map(async (apiUser: any) => {
+                    let avatarUrl = `https://i.pravatar.cc/150?u=${apiUser.GUID || apiUser.ID}`;
+
+                    try {
+                        // Fetch attachments for this user
+                        const attachments = await res.lists.getByTitle("Contacts")
+                            .items.getById(apiUser.ID)
+                            .attachmentFiles.get();
+
+                        // Find profile picture attachment
+                        const profilePic = attachments.find((att: any) =>
+                            att.FileName.startsWith('profile_') ||
+                            att.FileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+                        );
+
+                        if (profilePic) {
+                            // Use SharePoint site URL + ServerRelativeUrl
+                            avatarUrl = `https://smalsusinfolabs.sharepoint.com${profilePic.ServerRelativeUrl}`;
+                        }
+                    } catch (attachmentError) {
+                        console.warn(`Could not fetch attachments for user ${apiUser.ID}:`, attachmentError);
+                        // Continue with default avatar
+                    }
+
+                    return {
+                        id: apiUser.ID,
+                        fullName: apiUser.FullName || apiUser.Title,
+                        suffix: apiUser.Suffix,
+                        firstName: apiUser.FirstName || (apiUser.FullName || apiUser.Title)?.split(' ')[0] || '',
+                        lastName: (apiUser.FullName || apiUser.Title)?.split(' ').slice(1).join(' ') || '',
+                        email: apiUser.Email,
+                        avatarUrl,
+                        role: (apiUser.Role?.toLowerCase() || 'user') as UserRole,
+                        isVerified: apiUser.isVerified ?? false,
+                        jobTitle: apiUser.JobTitle || 'Employee',
+                        department: apiUser.Department || 'General',
+                        organization: apiUser.Company || 'Smalsus Infolabs Pvt Ltd',
+                        dateOfJoining: (apiUser.Date_x0020_Of_x0020_Joining ? getDate(apiUser.Date_x0020_Of_x0020_Joining) : null) || new Date().toISOString().split('T')[0],
+                        dateOfExit: apiUser.DateOfExit ? getDate(apiUser.DateOfExit) : null,
+                        businessPhone: apiUser.WorkPhone || '',
+                        mobileNo: apiUser.CellPhone || '',
+                        address: apiUser.WorkAddress || '',
+                        city: apiUser.WorkCity || '',
+                        postalCode: apiUser.WorkZip || '',
+                        userType:
+                            apiUser.User_x0020_Type === 'Internal'
+                                ? 'Internal User'
+                                : 'External User',
+                        extension: '',
+                        permissionGroups: [],
+                        principalName: apiUser.Email,
+                        userStatus: 'Active',
+                        userTypeDetail: 'Member',
+                        createdDate: apiUser.Created || new Date().toISOString(),
+                        modifiedDate: apiUser.Modified || new Date().toISOString(),
+                        createdBy: apiUser.Author || 'Admin',
+                        modifiedBy: apiUser.Editor || 'Admin',
+                        site: apiUser.Site || ['SMALSUS'],
+                        typeOfContact: ['Employee'],
+                        platformAccounts: [],
+                        history: (() => {
+                            // Parse userHistory from SharePoint (stored as JSON string)
+                            try {
+                                if (apiUser.userHistory) {
+                                    const historyData = typeof apiUser.userHistory === 'string'
+                                        ? JSON.parse(apiUser.userHistory)
+                                        : apiUser.userHistory;
+                                    return Array.isArray(historyData) ? historyData : [];
+                                }
+                            } catch (error) {
+                                console.warn(`Failed to parse userHistory for user ${apiUser.ID}:`, error);
+                            }
+                            return [];
+                        })(),
+                        linkedin: apiUser.LinkedIn?.Url || '',
+                        twitter: apiUser.Twitter?.Url || '',
+                        notes: apiUser.Comments || apiUser.Notes || '',
+                        gender: apiUser.Gender || ''
+                    };
+                })
+            );
+            return usersWithAttachments;
         } catch (error) {
-            console.error("Error fetching Users:", error);
+            console.log(error);
             return [];
         }
     }
 
-    const getMockAssets = async (families: AssetFamily[], users: User[]) => {
+    const getMockAssets = async (allUsers: User[] = []): Promise<Asset[]> => {
+        const web = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+
         try {
-            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
-            // Standard fetch without expansion to avoid OData errors
-            const data = await res.lists.getByTitle("AssetManagementSystem").items.getAll();
-            console.log("Fetched Assets (Raw):", data);
-            return data.map(item => mapSPAssetToAsset(item, families, users));
+            const items = await web.lists
+                .getByTitle("AssetManagementSystem")
+                .items.select(
+                    "Id",
+                    "Title",
+                    "AssetId",
+                    "Email",
+                    "licenseKey",
+                    "Status",
+                    "AssetType",
+                    "LicenseType",
+                    "purchaseDate",
+                    "expiryDate",
+                    "Cost",
+                    "serialNumber",
+                    "modelNumber",
+                    "Created",
+                    "Modified",
+                    "assetRepo/Id",
+                    "assetRepo/Title",
+                    "assetRepo/cost",
+                    "assignToUserId",
+                    "assignToUser/Id",
+                    "maintenanceHistory"
+                )
+                .expand("assetRepo", "assignToUser")
+                .getAll();
+            return items.map((item: any): Asset => {
+                /* ---------- Asset Type ---------- */
+                const assetType =
+                    item.AssetType === "Hardware"
+                        ? AssetType.HARDWARE
+                        : AssetType.LICENSE;
+
+                /* ---------- Assigned Users (Multi-select lookup) ---------- */
+                let assignedUser: User | null = null;
+                let assignedUsers: User[] = [];
+
+                // assignToUser is a multi-select lookup field, so it returns an array
+                const assignToUserData = item.assignToUser;
+                const lookupUsers = allUsers.length > 0 ? allUsers : users;
+
+                if (assignToUserData) {
+                    // Handle both array (multi-select) and single object (in case of single selection)
+                    const userArray = Array.isArray(assignToUserData) ? assignToUserData : [assignToUserData];
+
+                    assignedUsers = userArray.map((spUser: any) => {
+                        // Try to find the user in our users list first
+                        const found = lookupUsers.find(
+                            u => u.id.toString() === spUser.Id.toString()
+                        );
+
+                        return found ?? {
+                            id: spUser.Id,
+                            fullName: spUser.Title || "",
+                            firstName: spUser.Title?.split(" ")[0] || "",
+                            lastName: spUser.Title?.split(" ").slice(1).join(" ") || "",
+                            email: spUser.Email || "",
+                            avatarUrl: `https://i.pravatar.cc/150?u=${spUser.Id}`,
+                            role: "user",
+                            isVerified: false,
+                            jobTitle: "",
+                            department: "",
+                            organization: "",
+                            dateOfJoining: "",
+                            dateOfExit: null,
+                            businessPhone: "",
+                            mobileNo: "",
+                            address: "",
+                            city: "",
+                            postalCode: "",
+                            userType: "External",
+                            extension: "",
+                            permissionGroups: [],
+                            principalName: spUser.Email || "",
+                            userStatus: "Active",
+                            userTypeDetail: "",
+                            createdDate: item.Created,
+                            modifiedDate: item.Modified,
+                            createdBy: "System",
+                            modifiedBy: "System",
+                            site: [],
+                            typeOfContact: [],
+                            platformAccounts: [],
+                            linkedin: "",
+                            twitter: ""
+                        } as User;
+                    });
+
+                    // For hardware (single assignment model), use the first user as assignedUser
+                    if (assetType === AssetType.HARDWARE && assignedUsers.length > 0) {
+                        assignedUser = assignedUsers[0];
+                    }
+                }
+
+                /* ---------- Final Asset ---------- */
+                const spId = item.Id || item.ID;
+                return {
+                    id: spId,
+                    assetId: item.AssetId || spId,
+
+                    familyId: item.assetRepo?.Id ? `repo-${item.assetRepo.Id}` : undefined,
+                    title: item.Title,
+
+                    status: item.Status || AssetStatus.AVAILABLE,
+                    assetType,
+                    variantType: (() => {
+                        const variant = item.LicenseType || "";
+                        if (item.AssetId) {
+                            console.log(`Asset ${item.AssetId}: LicenseType from SharePoint = "${item.LicenseType}", variantType = "${variant}"`);
+                        }
+                        return variant;
+                    })(),
+
+                    purchaseDate: getDate(item.purchaseDate) || "",
+                    renewalDate: getDate(item.expiryDate) || "",
+                    warrantyExpiryDate: getDate(item.expiryDate) || "",
+
+                    cost: item.Cost || item.cost || item.assetRepo?.cost || 0,
+                    serialNumber: item.serialNumber,
+                    modelNumber: item.modelNumber,
+
+                    assignedUser,
+                    assignedUsers,
+                    activeUsers: assignedUsers,
+                    // For email, use item.Email first, then assignedUser (hardware), then first assignedUser (licenses)
+                    email: item.Email || assignedUser?.email || (assignedUsers.length > 0 ? assignedUsers[0].email : undefined),
+                    licenseKey: item.licenseKey,
+
+                    location: "Office",
+                    condition: HardwareCondition.GOOD,
+                    assignmentHistory: (() => {
+                        // Parse maintenanceHistory from SharePoint (stored as JSON string)
+                        let parsedHistory: AssignmentHistory[] = [];
+
+                        // Helper function to decode HTML entities
+                        const decodeHtmlEntities = (text: string): string => {
+                            const textarea = document.createElement('textarea');
+                            textarea.innerHTML = text;
+                            return textarea.value;
+                        };
+
+                        try {
+                            // Try both lowercase and uppercase field names (SharePoint can be case-sensitive)
+                            const historyField = item.maintenanceHistory || item.MaintenanceHistory;
+
+                            if (historyField) {
+                                let jsonString = historyField;
+
+                                // If it's a string, decode HTML entities first
+                                if (typeof historyField === 'string') {
+                                    jsonString = decodeHtmlEntities(historyField);
+                                }
+
+                                // Parse the JSON
+                                const historyData = typeof jsonString === 'string'
+                                    ? JSON.parse(jsonString)
+                                    : jsonString;
+
+                                console.log(`Asset ${spId} - Parsed historyData:`, historyData); // Debug log
+                                console.log(`Asset ${spId} - Is array:`, Array.isArray(historyData)); // Debug log
+
+                                // Ensure it's an array
+                                if (Array.isArray(historyData)) {
+                                    parsedHistory = historyData.map((entry: any, index: number) => ({
+                                        id: entry.id || `hist-${spId}-${index}`,
+                                        assetName: entry.assetName || item.Title,
+                                        assetId: String(entry.assetId || item.AssetId || spId), // Ensure assetId is a string
+                                        date: entry.date || new Date().toISOString().split('T')[0],
+                                        type: entry.type || 'Maintenance',
+                                        notes: entry.notes || '',
+                                        assignedTo: entry.assignedTo,
+                                        assignedFrom: entry.assignedFrom
+                                    }));
+                                } else {
+                                    console.warn(`⚠️ Asset ${spId} - historyData is not an array:`, historyData);
+                                }
+                            } else {
+                                console.log(`ℹ️ Asset ${spId} - No maintenanceHistory field found`);
+                            }
+                        } catch (error) {
+                            console.error(`❌ Asset ${spId} - Failed to parse maintenanceHistory:`, error);
+                            console.error(`Raw data that failed:`, item.maintenanceHistory || item.MaintenanceHistory);
+                            // Continue with empty history array on parse error
+                        }
+
+                        return parsedHistory;
+                    })(),
+
+                    created: item.Created,
+                    modified: item.Modified,
+                    createdBy: "Admin",
+                    modifiedBy: "Admin"
+                } as Asset;
+            });
         } catch (error) {
-            console.error("Error fetching Assets:", error);
+            console.error("Error fetching assets:", error);
             return [];
         }
-    }
+    };
 
-    const getMockRequests = async (users: User[]) => {
+    const getMockRequests = async (allUsers: User[] = []) => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         try {
-            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
-            // Standard fetch without expansion
-            const data = await res.lists.getByTitle("Request").items.getAll();
-            console.log("Fetched Requests (Raw):", data);
-            return data.map(item => mapSPRequestToRequest(item, users));
+            const data = await res.lists.getByTitle("Request").items.select(
+                "Id",
+                "Title",
+                "RequestType",
+                "Status",
+                "Comment",
+                "RequestDate",
+                "AssetId",
+                "AssetFamily/Id",
+                "AssetFamily/Title",
+                "RequestedBy/Id",
+                "RequestedBy/FullName",
+                "RequestedBy/Email",
+            )
+                .expand(
+                    "AssetFamily",
+                    "RequestedBy"
+                )
+                .get();
+            const formateData: Request[] = data.map((apiItem: any) => {
+
+                // Robust user lookup
+                let requester: User | null = null;
+                const lookupUsers = allUsers.length > 0 ? allUsers : users;
+
+                if (apiItem.RequestedBy) {
+                    requester = lookupUsers.find(u =>
+                        String(u.id) === String(apiItem.RequestedBy.Id) ||
+                        (apiItem.RequestedBy.Email && u.email?.toLowerCase() === apiItem.RequestedBy.Email.toLowerCase())
+                    ) || null;
+                }
+
+                // Fallback user if not found or expansion missing
+                const safeRequester = requester || {
+                    id: apiItem.RequestedBy?.Id || apiItem.RequestedById || `u-${apiItem.Id}`,
+                    fullName: apiItem.RequestedBy?.FullName || apiItem.RequestedBy?.Title || "Unknown",
+                    email: apiItem.RequestedBy?.Email || "",
+                    avatarUrl: `https://i.pravatar.cc/150?u=${apiItem.RequestedBy?.Id || apiItem.Id}`,
+                    role: "user",
+                } as User;
+
+                return {
+                    id: String(apiItem.Id),
+                    type: apiItem.RequestType,
+                    item: apiItem.Title,
+                    familyId: apiItem.AssetFamily?.Id ? `repo-${apiItem.AssetFamily.Id}` : undefined,
+                    assetId: apiItem.AssetId,
+                    requestedBy: safeRequester,
+                    status: (apiItem.Status as RequestStatus) || RequestStatus.PENDING,
+                    requestDate: apiItem.RequestDate
+                        ? apiItem.RequestDate.split("T")[0]
+                        : new Date().toISOString().split("T")[0],
+                    notes: apiItem.Comment
+                        ? apiItem.Comment.replace(/<[^>]*>/g, "").trim()
+                        : "",
+                };
+            });
+            return formateData;
         } catch (error) {
-            console.error("Error fetching Requests:", error);
+            console.log("Error fetching requests:", error);
             return [];
         }
     }
 
     const getMockVendors = async () => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         try {
-            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
             const data = await res.lists.getByTitle("Vendors").items.getAll();
-            return data.map((v: any) => ({
-                id: v.Id.toString(),
-                name: v.Title,
-                website: v.Website,
-                contactName: v.ContactName,
-                email: v.Email
+            const formateData: Vendor[] = data.map((apiVendor: any) => ({
+                id: `v-${apiVendor.ID}`,
+                name: apiVendor.Title,
+                website: apiVendor.Website?.Url || apiVendor.Description || apiVendor.Url || '',
+                contactName: apiVendor.ContactName || '',
+                email: apiVendor.Email || ''
             }));
+            return formateData;
         } catch (error) {
-            console.error("Error fetching Vendors:", error);
+            console.log("Error fetching vendors:", error);
             return [];
         }
     }
@@ -583,7 +786,7 @@ const App: React.FC = () => {
             setVendors(vendorData);
 
             // Assets and Requests depend on Families/Users for mapping
-            const assetsData = await getMockAssets(familiesData, usersData);
+            const assetsData = await getMockAssets(usersData);
             setAssets(assetsData);
             // DEBUGING
 
@@ -658,158 +861,230 @@ const App: React.FC = () => {
         }
     };
 
-    const handleSaveFamily = (family: AssetFamily) => {
-        if (editingFamily) {
-            setAssetFamilies(assetFamilies.map(f => f.id === family.id ? { ...family, lastModifiedDate: new Date().toISOString() } : f));
-        } else {
-            const productCode = family.name.substring(0, 4).toUpperCase();
-            const newFamily = { ...family, id: `fam-${new Date().toISOString()}`, productCode, createdDate: new Date().toISOString(), lastModifiedDate: new Date().toISOString() };
-            setAssetFamilies([...assetFamilies, newFamily as AssetFamily]);
+    const handleSaveFamily = async (family: AssetFamily) => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+        const isHardware = family.assetType === AssetType.HARDWARE;
+        const spData: any = {
+            Title: family.name,
+            AssetType: isHardware ? 'Hardware' : 'Software',
+            Category: family.category,
+            Description: family.description,
+            AssignmentModel: family.assignmentModel,
+            VendorNameId: undefined, // Handle Lookup later if needed, but Title is usually sync'd
+            ProductCode: family.productCode || family.name.substring(0, 4).toUpperCase()
+        };
+
+        if (!isHardware) {
+            const software = family as SoftwareProfile;
+            spData.Variants = JSON.stringify(software.variants || []);
+        }
+
+        try {
+            if (editingFamily) {
+                const numericId = Number(family.id.replace('repo-', '').replace('fam-', ''));
+                if (!isNaN(numericId)) {
+                    await res.lists.getByTitle("AssetRepository").items.getById(numericId).update(spData);
+                    setAssetFamilies(assetFamilies.map(f => f.id === family.id ? { ...family, lastModifiedDate: new Date().toISOString() } : f));
+                }
+            } else {
+                const result = await res.lists.getByTitle("AssetRepository").items.add(spData);
+                const newFamily = {
+                    ...family,
+                    id: `repo-${result.data.Id}`,
+                    productCode: spData.ProductCode,
+                    createdDate: new Date().toISOString(),
+                    lastModifiedDate: new Date().toISOString()
+                };
+                setAssetFamilies([...assetFamilies, newFamily as AssetFamily]);
+            }
+            console.log("Asset Family saved to SharePoint successfully.");
+        } catch (error) {
+            console.error("Error saving Asset Family to SharePoint:", error);
+            alert("Failed to save to SharePoint. Check console for details.");
         }
         closeAssetModal();
     };
 
-    const handleBulkCreate = (family: AssetFamily, variantName: string, quantity: number, commonData: Partial<Asset>) => {
+    const handleBulkCreate = async (family: AssetFamily, variantName: string, quantity: number, commonData: Partial<Asset>) => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         const newAssets: Asset[] = [];
         const familyPrefix = family.assetType === AssetType.LICENSE ? 'SOFT' : 'HARD';
         const productCode = (family as any).productCode || 'GEN';
         const familyInstances = assets.filter(a => a.familyId === family.id);
+        const repoId = Number(family.id.replace('repo-', '').replace('fam-', ''));
         let sequenceStart = familyInstances.length + 1;
 
-        for (let i = 0; i < quantity; i++) {
-            const sequenceNumber = String(sequenceStart + i).padStart(4, '0');
-            const assetId = `${familyPrefix}-${productCode}-${sequenceNumber}`;
-            const newAsset: Asset = {
-                purchaseDate: new Date().toISOString().split('T')[0],
-                cost: 0,
-                ...commonData,
-                id: `inst-${new Date().getTime() + i}`,
-                assetId,
+        try {
+            const batch = res.createBatch();
+            const addedItems: any[] = [];
+
+            for (let i = 0; i < quantity; i++) {
+                const sequenceNumber = String(sequenceStart + i).padStart(4, '0');
+                const assetId = `${familyPrefix}-${productCode}-${sequenceNumber}`;
+                const spData: any = {
+                    Title: `${family.name} ${sequenceStart + i}`,
+                    AssetId: assetId,
+                    Status: AssetStatus.AVAILABLE,
+                    AssetType: family.assetType === AssetType.HARDWARE ? 'Hardware' : 'Software',
+                    LicenseType: variantName,
+                    purchaseDate: new Date().toISOString().split('T')[0],
+                    Cost: 0,
+                    assetRepoId: repoId,
+                    ...commonData, // Override with any common data provided
+                };
+
+                // Add to batch
+                res.lists.getByTitle("AssetManagementSystem").items.inBatch(batch).add(spData).then(r => {
+                    addedItems.push({ spId: r.data.Id, assetId });
+                });
+            }
+
+            await batch.execute();
+
+            // Map back to local state
+            const localAssets: Asset[] = addedItems.map(item => ({
+                id: String(item.spId),
+                assetId: item.assetId,
                 familyId: family.id,
-                title: `${family.name} ${sequenceStart + i}`,
+                title: `${family.name} ${item.assetId.split('-').pop()}`,
                 status: AssetStatus.AVAILABLE,
                 assetType: family.assetType,
                 variantType: variantName,
+                purchaseDate: new Date().toISOString().split('T')[0],
+                cost: 0,
                 created: new Date().toISOString(),
                 modified: new Date().toISOString(),
                 createdBy: 'Admin (Bulk)',
                 modifiedBy: 'Admin (Bulk)',
-            };
-            newAssets.push(newAsset);
+            } as Asset));
+
+            setAssets(prev => [...prev, ...localAssets]);
+            console.log(`Successfully bulk created ${quantity} assets in SharePoint.`);
+        } catch (error) {
+            console.error("Error bulk creating assets in SharePoint:", error);
+            alert("Bulk creation failed. Check console for details.");
         }
-        setAssets(prev => [...prev, ...newAssets]);
     };
 
-    const handleSaveAsset = (asset: Asset) => {
+    const handleSaveAsset = async (asset: Asset) => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         let finalAsset = { ...asset };
         const today = new Date().toISOString().split('T')[0];
         let newHistoryEntries: AssignmentHistory[] = [];
 
-        if (editingAsset) {
-            const oldUser = editingAsset.assignedUser;
-            const newUser = asset.assignedUser;
-            const oldUsers = editingAsset.assignedUsers || [];
-            const newUsers = asset.assignedUsers || [];
+        const family = assetFamilies.find(f => f.id === asset.familyId);
+        const repoId = family ? Number(family.id.replace('repo-', '').replace('fam-', '')) : null;
 
-            if (oldUser?.id !== newUser?.id) {
-                if (oldUser) {
+        // Prepare SP Data
+        const spData: any = {
+            Title: asset.title,
+            AssetId: asset.assetId,
+            Status: asset.status,
+            AssetType: asset.assetType === AssetType.HARDWARE ? 'Hardware' : 'Software',
+            LicenseType: asset.variantType,
+            purchaseDate: asset.purchaseDate,
+            expiryDate: asset.renewalDate || asset.warrantyExpiryDate,
+            Cost: asset.cost,
+            serialNumber: asset.serialNumber,
+            modelNumber: asset.modelNumber,
+            assetRepoId: repoId,
+            licenseKey: asset.licenseKey,
+            Email: asset.email,
+        };
+
+        // Handle User Assignment
+        const assignedUserIds = asset.assetType === AssetType.HARDWARE
+            ? (asset.assignedUser ? [Number(asset.assignedUser.id)] : [])
+            : (asset.assignedUsers ? asset.assignedUsers.map(u => Number(u.id)) : []);
+
+        spData.assignToUserId = { results: assignedUserIds };
+
+        try {
+            if (editingAsset) {
+                const numericId = Number(asset.id);
+                if (isNaN(numericId)) throw new Error("Invalid Asset ID for SharePoint update");
+
+                // History Tracking
+                const oldUser = editingAsset.assignedUser;
+                const newUser = asset.assignedUser;
+                const oldUsers = editingAsset.assignedUsers || [];
+                const newUsers = asset.assignedUsers || [];
+
+                if (oldUser?.id !== newUser?.id) {
+                    if (oldUser) {
+                        newHistoryEntries.push({
+                            id: `hist-${Date.now()}-1`,
+                            assetId: asset.assetId,
+                            assetName: asset.title,
+                            date: today,
+                            type: 'Reassigned',
+                            assignedFrom: oldUser.fullName,
+                            assignedTo: newUser?.fullName || 'Inventory',
+                            notes: `Reassigned from ${oldUser.fullName} to ${newUser ? newUser.fullName : 'Inventory'}`
+                        });
+                    } else if (newUser) {
+                        newHistoryEntries.push({
+                            id: `hist-${Date.now()}-1`,
+                            assetId: asset.assetId,
+                            assetName: asset.title,
+                            date: today,
+                            type: 'Assigned',
+                            assignedTo: newUser.fullName,
+                            notes: `Assigned to ${newUser.fullName}`
+                        });
+                    }
+                }
+
+                if (newHistoryEntries.length > 0) {
+                    finalAsset.assignmentHistory = [...(finalAsset.assignmentHistory || []), ...newHistoryEntries];
+                }
+
+                // Encode history for SP
+                spData.maintenanceHistory = JSON.stringify(finalAsset.assignmentHistory || []);
+
+                await res.lists.getByTitle("AssetManagementSystem").items.getById(numericId).update(spData);
+                finalAsset = { ...finalAsset, modified: new Date().toISOString(), modifiedBy: 'Admin' };
+                setAssets(assets.map(a => a.id === asset.id ? finalAsset : a));
+            } else {
+                // Formatting for new asset ID if not provided
+                if (!asset.assetId) {
+                    const familyPrefix = family?.assetType === AssetType.LICENSE ? 'SOFT' : 'HARD';
+                    const productCode = (family as any)?.productCode || 'GEN';
+                    const sequenceNumber = String(assets.filter(a => a.familyId === asset.familyId).length + 1).padStart(4, '0');
+                    spData.AssetId = `${familyPrefix}-${productCode}-${sequenceNumber}`;
+                }
+
+                // Initial History
+                if (asset.assignedUser || (asset.assignedUsers && asset.assignedUsers.length > 0)) {
                     newHistoryEntries.push({
-                        id: `hist-${Date.now()}-1`,
-                        assetId: asset.assetId,
-                        assetName: asset.title,
-                        date: today,
-                        type: 'Reassigned',
-                        assignedFrom: oldUser.fullName,
-                        assignedTo: newUser?.fullName || 'Unassigned',
-                        notes: `Reassigned from ${oldUser.fullName} to ${newUser ? newUser.fullName : 'Inventory'}`
-                    });
-                } else if (newUser) {
-                    newHistoryEntries.push({
-                        id: `hist-${Date.now()}-1`,
-                        assetId: asset.assetId,
-                        assetName: asset.title,
+                        id: `hist-${Date.now()}`,
+                        assetId: spData.AssetId,
+                        assetName: spData.Title,
                         date: today,
                         type: 'Assigned',
-                        assignedTo: newUser.fullName,
-                        notes: `Assigned to ${newUser.fullName}`
+                        assignedTo: asset.assignedUser?.fullName || 'Multiple Users',
+                        notes: 'Initial Assignment'
                     });
                 }
+                spData.maintenanceHistory = JSON.stringify(newHistoryEntries);
+
+                const result = await res.lists.getByTitle("AssetManagementSystem").items.add(spData);
+                const newAsset = {
+                    ...asset,
+                    id: String(result.data.Id),
+                    assetId: spData.AssetId,
+                    assignmentHistory: newHistoryEntries,
+                    created: new Date().toISOString(),
+                    modified: new Date().toISOString(),
+                    createdBy: 'Admin',
+                    modifiedBy: 'Admin'
+                };
+                setAssets([...assets, newAsset]);
             }
-
-            const oldIds = oldUsers.map(u => u.id).sort().join(',');
-            const newIds = newUsers.map(u => u.id).sort().join(',');
-            if (oldIds !== newIds && newUsers.length > 0) {
-                newHistoryEntries.push({
-                    id: `hist-${Date.now()}-2`,
-                    assetId: asset.assetId,
-                    assetName: asset.title,
-                    date: today,
-                    type: 'Reassigned',
-                    notes: `License assignment updated. Now assigned to ${newUsers.length} users.`
-                });
-            }
-
-            const oldActive = (editingAsset.activeUsers || []).map(u => u.id).sort().join(',');
-            const newActive = (asset.activeUsers || []).map(u => u.id).sort().join(',');
-
-            if (oldActive !== newActive) {
-                const added = (asset.activeUsers || []).filter(u => !editingAsset.activeUsers?.some(old => old.id === u.id));
-                const removed = (editingAsset.activeUsers || []).filter(u => !asset.activeUsers?.some(newU => newU.id === u.id));
-
-                const changes: string[] = [];
-                if (added.length) changes.push(`Added: ${added.map(u => u.fullName).join(', ')}`);
-                if (removed.length) changes.push(`Removed: ${removed.map(u => u.fullName).join(', ')}`);
-
-                newHistoryEntries.push({
-                    id: `hist-usage-${Date.now()}`,
-                    assetId: asset.assetId,
-                    assetName: asset.title,
-                    date: today,
-                    type: 'Usage Update',
-                    notes: `Active users updated. ${changes.join('; ')}`
-                });
-            }
-
-            if (newHistoryEntries.length > 0) {
-                finalAsset.assignmentHistory = [...(finalAsset.assignmentHistory || []), ...newHistoryEntries];
-            }
-
-            finalAsset = { ...finalAsset, modified: new Date().toISOString(), modifiedBy: 'Admin' };
-            setAssets(assets.map(a => a.id === asset.id ? finalAsset : a));
-        } else {
-            const family = assetFamilies.find(f => f.id === asset.familyId);
-            const familyPrefix = family?.assetType === AssetType.LICENSE ? 'SOFT' : 'HARD';
-            const productCode = (family as any)?.productCode || 'GEN';
-            const sequenceNumber = String(assets.filter(a => a.familyId === asset.familyId).length + 1).padStart(4, '0');
-            const assetId = `${familyPrefix}-${productCode}-${sequenceNumber}`;
-
-            const newAsset = { ...asset, id: `inst-${new Date().toISOString()}`, assetId: asset.assetId || assetId, created: new Date().toISOString(), modified: new Date().toISOString(), createdBy: 'Admin', modifiedBy: 'Admin' };
-
-            if (newAsset.assignedUser || (newAsset.assignedUsers && newAsset.assignedUsers.length > 0)) {
-                newHistoryEntries.push({
-                    id: `hist-${Date.now()}`,
-                    assetId: newAsset.assetId,
-                    assetName: newAsset.title,
-                    date: new Date().toISOString().split('T')[0],
-                    type: 'Assigned',
-                    assignedTo: newAsset.assignedUser?.fullName || 'Multiple Users',
-                    notes: 'Initial Assignment'
-                });
-            }
-
-            if (newAsset.activeUsers && newAsset.activeUsers.length > 0) {
-                newHistoryEntries.push({
-                    id: `hist-usage-${Date.now()}`,
-                    assetId: newAsset.assetId,
-                    assetName: newAsset.title,
-                    date: new Date().toISOString().split('T')[0],
-                    type: 'Usage Update',
-                    notes: `Initial active users: ${newAsset.activeUsers.map(u => u.fullName).join(', ')}`
-                });
-            }
-
-            newAsset.assignmentHistory = newHistoryEntries;
-            setAssets([...assets, newAsset as Asset]);
+            console.log("Asset instance saved to SharePoint successfully.");
+        } catch (error) {
+            console.error("Error saving Asset instance to SharePoint:", error);
+            alert("Failed to save to SharePoint. Check console for details.");
         }
         closeAssetModal();
     };
@@ -1038,24 +1313,29 @@ const App: React.FC = () => {
         // Persist to SharePoint
         try {
             const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
-            await res.lists.getByTitle("Request").items.add({
+            const familyIdNumeric = Number(family.id.replace('repo-', '').replace('fam-', ''));
+            const result = await res.lists.getByTitle("Request").items.add({
                 Title: family.name,
                 RequestType: family.assetType === AssetType.HARDWARE ? 'Hardware' : 'Software',
-                AssetFamilyId: Number(family.id) || null,
+                AssetFamilyId: familyIdNumeric || null,
                 Status: 'Pending',
                 Comment: notes,
                 RequestDate: new Date().toISOString(),
                 RequestedById: Number(user.id)
             });
             console.log("Request saved to SharePoint successfully.");
+
+            // Update local ID with the one returned from SharePoint
+            const actualId = result.data.Id.toString();
+            setRequests(prev => prev.map(r => r.id === newRequest.id ? { ...r, id: actualId } : r));
         } catch (error) {
             console.error("Error saving request to SharePoint:", error);
             alert("Request was saved locally but failed to sync to SharePoint. Check console for details.");
         }
     };
 
-    const handleNewRequest = (category: RequestCategory) => {
-        setRequestingUser(currentUser);
+    const handleNewRequest = (category: RequestCategory, requestedFor?: User) => {
+        setRequestingUser(requestedFor || currentUser);
         setRequestCategory(category);
         setIsRequestModalOpen(true);
     };
@@ -1069,20 +1349,144 @@ const App: React.FC = () => {
         setIsTaskModalOpen(true);
     };
 
-    const handleRequestAction = (requestId: string, newStatus: RequestStatus) => {
+
+    const handleRequestAction = async (requestId: string, newStatus: RequestStatus) => {
         if (newStatus === RequestStatus.APPROVED) {
             const req = requests.find(r => r.id === requestId);
             if (req) {
                 handleCreateTask(req);
             }
         } else {
+            // rejection case
             setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: newStatus } : r));
+            try {
+                const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+                const numericId = Number(requestId.replace('req-', ''));
+                if (!isNaN(numericId)) {
+                    await res.lists.getByTitle("Request").items.getById(numericId).update({
+                        Status: 'Rejected'
+                    });
+                    console.log("Request rejection persisted to SharePoint.");
+                }
+            } catch (error) {
+                console.error("Error persisting request rejection:", error);
+            }
         }
     };
 
-    const handleTaskSubmit = (newTask: Task) => {
+    const handleTaskSubmit = async (newTask: Task) => {
         setTasks(prev => [newTask, ...prev]);
-        setRequests(prev => prev.map(r => r.id === newTask.requestId ? { ...r, status: RequestStatus.IN_PROGRESS, linkedTaskId: newTask.id } : r));
+
+        // Find the request and the user
+        const request = requests.find(r => r.id === newTask.requestId);
+        if (!request) {
+            console.error("Request not found for task:", newTask.requestId);
+            setIsTaskModalOpen(false);
+            setRequestForTask(null);
+            return;
+        }
+
+        const requester = request.requestedBy;
+        const familyId = String(request.familyId);
+
+        // Find an available asset of this family (strict string comparison)
+        const availableAsset = assets.find(a => String(a.familyId) === familyId && a.status === AssetStatus.AVAILABLE);
+        let updatedAssetId: string | undefined = undefined;
+
+        if (!availableAsset) {
+            alert("No available assets found for this product. Please add more inventory before fulfilling this request.");
+            setIsTaskModalOpen(false);
+            setRequestForTask(null);
+            return;
+        }
+
+        updatedAssetId = availableAsset.assetId;
+
+        if (availableAsset) {
+            updatedAssetId = availableAsset.assetId;
+            // Update Asset locally
+            const updatedAsset: Asset = {
+                ...availableAsset,
+                status: AssetStatus.ACTIVE,
+                modified: new Date().toISOString(),
+                modifiedBy: 'System (Automatic Assignment)'
+            };
+
+            if (updatedAsset.assetType === AssetType.HARDWARE) {
+                updatedAsset.assignedUser = requester;
+                updatedAsset.assignedUsers = [requester];
+            } else {
+                updatedAsset.assignedUsers = [...(updatedAsset.assignedUsers || []), requester];
+                if (!updatedAsset.assignedUser) updatedAsset.assignedUser = requester;
+            }
+            updatedAsset.email = requester.email;
+
+            // Add assignment history
+            const historyEntry: AssignmentHistory = {
+                id: `hist-${Date.now()}`,
+                assetId: updatedAsset.assetId,
+                assetName: updatedAsset.title,
+                date: new Date().toISOString().split('T')[0],
+                type: 'Assigned',
+                assignedTo: requester.fullName,
+                notes: `Automatically assigned via fulfilled request ${request.id}`
+            };
+            updatedAsset.assignmentHistory = [...(updatedAsset.assignmentHistory || []), historyEntry];
+
+            // Update assets state
+            setAssets(prev => prev.map(a => a.id === updatedAsset.id ? updatedAsset : a));
+
+            // Persist Asset Update to SharePoint
+            const assetNumericId = Number(availableAsset.id);
+            if (!isNaN(assetNumericId)) {
+                try {
+                    const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+
+                    const requesterId = Number(requester.id);
+                    const spAssetData: any = {
+                        Status: 'Active',
+                        Email: requester.email,
+                        maintenanceHistory: JSON.stringify(updatedAsset.assignmentHistory || [])
+                    };
+
+                    if (availableAsset.assetType === AssetType.LICENSE) {
+                        const existingIds = (availableAsset.assignedUsers || []).map(u => Number(u.id));
+                        const newIds = Array.from(new Set([...existingIds, requesterId]));
+                        spAssetData.assignToUserId = { results: newIds };
+                    } else {
+                        spAssetData.assignToUserId = { results: [requesterId] };
+                    }
+
+                    await res.lists.getByTitle("AssetManagementSystem").items.getById(assetNumericId).update(spAssetData);
+                    console.log("Asset assignment persisted to SharePoint.");
+                } catch (error) {
+                    console.error("Error persisting asset assignment:", error);
+                }
+            }
+        }
+
+        // Update request state locally and persist to SP
+        setRequests(prev => prev.map(r => r.id === request.id ? {
+            ...r,
+            status: RequestStatus.FULFILLED,
+            linkedTaskId: newTask.id,
+            assetId: updatedAssetId || r.assetId
+        } : r));
+
+        try {
+            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+            const requestNumericId = Number(request.id.replace('req-', ''));
+            if (!isNaN(requestNumericId)) {
+                await res.lists.getByTitle("Request").items.getById(requestNumericId).update({
+                    Status: 'Fulfilled',
+                    AssetId: updatedAssetId
+                });
+                console.log("Request fulfillment persisted to SharePoint.");
+            }
+        } catch (error) {
+            console.error("Error persisting request fulfillment:", error);
+        }
+
         setIsTaskModalOpen(false);
         setRequestForTask(null);
     };
@@ -1273,13 +1677,20 @@ const App: React.FC = () => {
     const renderContent = () => {
         if (selectedUser) {
             const userAssets = assets.filter(asset =>
-                (asset.assignedUser?.id === selectedUser.id) ||
-                (asset.assignedUsers?.some(u => u.id === selectedUser.id))
+                (asset.assignedUser?.id && String(asset.assignedUser.id) === String(selectedUser.id)) ||
+                (asset.assignedUsers?.some(u => String(u.id) === String(selectedUser.id)))
             );
             return (
                 <div className="container-xl">
                     <button onClick={handleBackToList} className="btn btn-sm btn-outline-secondary mb-3 d-flex align-items-center gap-1"> <ArrowRight size={14} className="rotate-180" /> Back to List </button>
-                    <UserProfile user={selectedUser} userAssets={userAssets} assetFamilies={assetFamilies} onEditProfile={() => setIsProfileModalOpen(true)} onNewRequest={handleNewRequest} onQuickRequest={handleQuickRequest} />
+                    <UserProfile
+                        user={selectedUser}
+                        userAssets={userAssets}
+                        assetFamilies={assetFamilies}
+                        onEditProfile={() => setIsProfileModalOpen(true)}
+                        onNewRequest={(cat) => handleNewRequest(cat, selectedUser || undefined)}
+                        onQuickRequest={handleQuickRequest}
+                    />
                 </div>
             );
         }
