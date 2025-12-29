@@ -929,15 +929,15 @@ const App: React.FC = () => {
                     Status: AssetStatus.AVAILABLE,
                     AssetType: family.assetType === AssetType.HARDWARE ? 'Hardware' : 'Software',
                     LicenseType: variantName,
-                    purchaseDate: new Date().toISOString().split('T')[0],
-                    Cost: 0,
+                    purchaseDate: commonData.purchaseDate || new Date().toISOString().split('T')[0],
+                    expiryDate: commonData.renewalDate || null,
+                    Cost: commonData.cost || 0,
                     assetRepoId: repoId,
-                    ...commonData, // Override with any common data provided
                 };
 
                 // Add to batch
                 res.lists.getByTitle("AssetManagementSystem").items.inBatch(batch).add(spData).then(r => {
-                    addedItems.push({ spId: r.data.Id, assetId });
+                    addedItems.push({ spId: r.data.Id, assetId, spData });
                 });
             }
 
@@ -948,12 +948,13 @@ const App: React.FC = () => {
                 id: String(item.spId),
                 assetId: item.assetId,
                 familyId: family.id,
-                title: `${family.name} ${item.assetId.split('-').pop()}`,
+                title: item.spData.Title,
                 status: AssetStatus.AVAILABLE,
                 assetType: family.assetType,
                 variantType: variantName,
-                purchaseDate: new Date().toISOString().split('T')[0],
-                cost: 0,
+                purchaseDate: item.spData.purchaseDate,
+                renewalDate: item.spData.expiryDate,
+                cost: item.spData.Cost,
                 created: new Date().toISOString(),
                 modified: new Date().toISOString(),
                 createdBy: 'Admin (Bulk)',
@@ -1002,8 +1003,8 @@ const App: React.FC = () => {
             Status: asset.status,
             AssetType: asset.assetType === AssetType.HARDWARE ? 'Hardware' : 'Software',
             LicenseType: asset.variantType,
-            purchaseDate: asset.purchaseDate,
-            expiryDate: asset.renewalDate || asset.warrantyExpiryDate,
+            purchaseDate: asset.purchaseDate || null,
+            expiryDate: (asset.renewalDate || asset.warrantyExpiryDate) || null,
             Cost: asset.cost,
             serialNumber: asset.serialNumber,
             modelNumber: asset.modelNumber,
