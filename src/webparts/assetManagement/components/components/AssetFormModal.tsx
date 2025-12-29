@@ -227,10 +227,10 @@ const AssetFormModal: React.FC<AssetFormModalProps> = ({ isOpen, onClose, onSave
     const handleVariantChange = (index: number, e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.currentTarget;
         const variants = [...((formData as SoftwareProfile).variants || [])];
-        (variants[index] as any)[name] = name === 'cost' ? parseFloat(value) || 0 : value;
+        (variants[index] as any)[name] = (name === 'cost' || name === 'totalCount') ? parseFloat(value) || 0 : value;
         setFormData(prev => ({ ...prev, variants }));
     };
-    const addVariant = () => setFormData(prev => ({ ...prev, variants: [...((prev as SoftwareProfile).variants || []), { id: `var-${Date.now()}`, name: '', licenseType: LicenseType.SUBSCRIPTION, cost: 0 }] }));
+    const addVariant = () => setFormData(prev => ({ ...prev, variants: [...((prev as SoftwareProfile).variants || []), { id: `var-${Date.now()}`, name: '', licenseType: LicenseType.SUBSCRIPTION, cost: 0, totalCount: 0 }] }));
     const removeVariant = (index: number) => {
         const variants = [...((formData as SoftwareProfile).variants || [])];
         variants.splice(index, 1);
@@ -248,7 +248,18 @@ const AssetFormModal: React.FC<AssetFormModalProps> = ({ isOpen, onClose, onSave
         const base = new Date(formData.purchaseDate || new Date().toISOString().split('T')[0]);
         setFormData(prev => ({ ...prev, renewalDate: formatDateForInput(new Date(base.setMonth(base.getMonth() + months)).toISOString()) }));
     };
-    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); if (mode === 'family') onSaveFamily(formData as AssetFamily); else onSaveAsset(formData as Asset); };
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+
+        const finalData = { ...formData };
+        if (mode === 'family' && assetType === AssetType.LICENSE) {
+            const variants = (finalData as SoftwareProfile).variants || [];
+            finalData.totalCount = variants.reduce((sum, v) => sum + (v.totalCount || 0), 0);
+        }
+
+        if (mode === 'family') onSaveFamily(finalData as AssetFamily);
+        else onSaveAsset(finalData as Asset);
+    };
 
     const renderField = (fieldKey: string) => {
         switch (fieldKey) {
@@ -262,6 +273,7 @@ const AssetFormModal: React.FC<AssetFormModalProps> = ({ isOpen, onClose, onSave
             case 'variants': return renderSoftwareProfileForm_VariantsTab();
             case 'assignmentModel': return <FormRadioGroup label="Model" name="assignmentModel" value={(formData as AssetFamily).assignmentModel} onChange={handleChange as any} required options={[{ value: 'Single', label: 'Single' }, { value: 'Multiple', label: 'Multiple' }]} />;
             case 'title': return <FormInput label="Title" name="title" value={formData.title} onChange={handleChange} required />;
+            case 'totalCount': return <FormInput label="Total Count" name="totalCount" value={(formData as any).totalCount} onChange={handleChange} type="number" />;
             case 'assetId': return (
                 <div className="mb-3">
                     <label htmlFor="assetId" className="form-label small fw-bold text-secondary text-uppercase">Asset ID</label>
@@ -336,9 +348,10 @@ const AssetFormModal: React.FC<AssetFormModalProps> = ({ isOpen, onClose, onSave
             <div className="d-flex flex-column gap-3">
                 {((formData as SoftwareProfile).variants || []).map((variant, index) => (
                     <div key={variant.id} className="row g-2 p-2 bg-light rounded border border-light-subtle align-items-end">
-                        <div className="col-md-5"><label className="small fw-bold text-secondary text-uppercase mb-1" style={{ fontSize: '10px' }}>Name</label><input className="form-control form-control-sm" name="name" value={variant.name} onChange={(e) => handleVariantChange(index, e)} /></div>
-                        <div className="col-md-4"><label className="small fw-bold text-secondary text-uppercase mb-1" style={{ fontSize: '10px' }}>Type</label><select className="form-select form-select-sm" name="licenseType" value={variant.licenseType} onChange={(e) => handleVariantChange(index, e)}>{Object.values(LicenseType).map(lt => <option key={lt} value={lt}>{lt}</option>)}</select></div>
+                        <div className="col-md-3"><label className="small fw-bold text-secondary text-uppercase mb-1" style={{ fontSize: '10px' }}>Name</label><input className="form-control form-control-sm" name="name" value={variant.name} onChange={(e) => handleVariantChange(index, e)} /></div>
+                        <div className="col-md-3"><label className="small fw-bold text-secondary text-uppercase mb-1" style={{ fontSize: '10px' }}>Type</label><select className="form-select form-select-sm" name="licenseType" value={variant.licenseType} onChange={(e) => handleVariantChange(index, e)}>{Object.values(LicenseType).map(lt => <option key={lt} value={lt}>{lt}</option>)}</select></div>
                         <div className="col-md-2"><label className="small fw-bold text-secondary text-uppercase mb-1" style={{ fontSize: '10px' }}>Cost</label><input className="form-control form-control-sm" name="cost" value={variant.cost} onChange={(e) => handleVariantChange(index, e)} type="number" /></div>
+                        <div className="col-md-2"><label className="small fw-bold text-secondary text-uppercase mb-1" style={{ fontSize: '10px' }}>Total Count</label><input className="form-control form-control-sm" name="totalCount" value={variant.totalCount} onChange={(e) => handleVariantChange(index, e)} type="number" /></div>
                         <div className="col-md-1"><button type="button" onClick={() => removeVariant(index)} className="btn btn-sm btn-outline-danger p-1"><Trash2 size={14} /></button></div>
                     </div>
                 ))}

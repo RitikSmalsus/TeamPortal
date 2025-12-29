@@ -207,7 +207,7 @@ const App: React.FC = () => {
                         id: 'profile',
                         label: 'General Details',
                         sections: [
-                            { id: 'sec-hw-ident', title: 'Identity', columns: 2, fields: ['name', 'productCode', 'modelNumber', 'manufacturer', 'assignmentModel'] },
+                            { id: 'sec-hw-ident', title: 'Identity', columns: 2, fields: ['name', 'productCode', 'modelNumber', 'manufacturer', 'assignmentModel', 'totalCount'] },
                             { id: 'sec-hw-class', title: 'Classification', columns: 2, fields: ['category', 'description'] }
                         ]
                     }
@@ -706,6 +706,7 @@ const App: React.FC = () => {
                     "AssetFamily",
                     "RequestedBy"
                 )
+                .top(5000)
                 .get();
             const formateData: Request[] = data.map((apiItem: any) => {
 
@@ -871,7 +872,8 @@ const App: React.FC = () => {
             Description: family.description,
             AssignmentModel: family.assignmentModel,
             VendorNameId: undefined, // Handle Lookup later if needed, but Title is usually sync'd
-            ProductCode: family.productCode || family.name.substring(0, 4).toUpperCase()
+            ProductCode: family.productCode || family.name.substring(0, 4).toUpperCase(),
+            TotalCount: family.totalCount,
         };
 
         if (!isHardware) {
@@ -967,12 +969,30 @@ const App: React.FC = () => {
     };
 
     const handleSaveAsset = async (asset: Asset) => {
+        // Validation: Check Total Count Limit
+        const family = assetFamilies.find(f => f.id === asset.familyId);
+        if (family && (family.totalCount || 0) > 0) {
+            const familyAssets = assets.filter(a => a.familyId === family.id && a.id !== asset.id);
+            const currentAssignedCount = familyAssets.reduce((sum, a) => {
+                if (a.assetType === AssetType.HARDWARE) return sum + (a.assignedUser ? 1 : 0);
+                return sum + (a.assignedUsers ? a.assignedUsers.length : 0);
+            }, 0);
+
+            const newAssignmentsCount = asset.assetType === AssetType.HARDWARE
+                ? (asset.assignedUser ? 1 : 0)
+                : (asset.assignedUsers ? asset.assignedUsers.length : 0);
+
+            if (currentAssignedCount + newAssignmentsCount > (family.totalCount || 0)) {
+                alert("First create the Asset then Assign");
+                return;
+            }
+        }
+
         const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         let finalAsset = { ...asset };
         const today = new Date().toISOString().split('T')[0];
         let newHistoryEntries: AssignmentHistory[] = [];
 
-        const family = assetFamilies.find(f => f.id === asset.familyId);
         const repoId = family ? Number(family.id.replace('repo-', '').replace('fam-', '')) : null;
 
         // Prepare SP Data
@@ -1419,6 +1439,29 @@ const App: React.FC = () => {
                 updatedAsset.assignedUsers = [...(updatedAsset.assignedUsers || []), requester];
                 if (!updatedAsset.assignedUser) updatedAsset.assignedUser = requester;
             }
+
+            // Validation: Check Total Count Limit
+            const family = assetFamilies.find(f => f.id === updatedAsset.familyId);
+            if (family && (family.totalCount || 0) > 0) {
+                const familyAssets = assets.filter(a => a.familyId === family.id && a.id !== updatedAsset.id);
+                const currentAssignedCount = familyAssets.reduce((sum, a) => {
+                    if (a.assetType === AssetType.HARDWARE) return sum + (a.assignedUser ? 1 : 0);
+                    return sum + (a.assignedUsers ? a.assignedUsers.length : 0);
+                }, 0);
+
+                const newAssignmentsCount = updatedAsset.assetType === AssetType.HARDWARE
+                    ? (updatedAsset.assignedUser ? 1 : 0)
+                    : (updatedAsset.assignedUsers ? updatedAsset.assignedUsers.length : 0);
+
+                if (currentAssignedCount + newAssignmentsCount > (family.totalCount || 0)) {
+                    alert("First create the Asset then Assign");
+                    // Revert changes/Cancel
+                    setIsTaskModalOpen(false);
+                    setRequestForTask(null);
+                    return;
+                }
+            }
+
             updatedAsset.email = requester.email;
 
             // Add assignment history
@@ -1520,11 +1563,22 @@ const App: React.FC = () => {
     ];
 
     const requestColumns: ColumnDef<Request>[] = [
-        { accessorKey: 'item', header: 'Item', width: 300, cell: ({ row }) => (<div> <p className="fw-medium text-dark mb-0">{row.original.item}</p> <p className="small text-secondary mb-0">{row.original.type}</p> </div>) },
-        { accessorKey: 'requestedBy.fullName', header: 'Requested By', width: 200, cell: ({ row }) => (<button disabled={!isAdmin} onClick={() => handleUserClick(row.original.requestedBy)} className={`btn btn-link p-0 text-decoration-none d-flex align-items-center gap-2 text-start ${!isAdmin ? 'disabled text-dark' : 'text-primary'}`}> <img src={row.original.requestedBy.avatarUrl} alt={row.original.requestedBy.fullName} className="rounded-circle" style={{ width: '24px', height: '24px' }} /> <span className="small fw-medium text-truncate">{row.original.requestedBy.fullName}</span> </button>) },
-        { accessorKey: 'requestDate', header: 'Request Date', width: 150 },
+        { accessorKey: 'item', header: 'Item', width: 250, cell: ({ row }) => (<div> <p className="fw-medium text-dark mb-0">{row.original.item}</p> <p className="small text-secondary mb-0">{row.original.type}</p> </div>) },
         {
-            accessorKey: 'status', header: 'Status', width: 180, cell: ({ row }) => {
+            accessorKey: 'familyId',
+            header: 'Asset Family',
+            width: 180,
+            cell: ({ row }) => {
+                const fam = assetFamilies.find(f => f.id === row.original.familyId);
+                return <span className="small text-secondary">{fam?.name || '-'}</span>
+            }
+        },
+        { accessorKey: 'assetId', header: 'Assigned ID', width: 140, cell: ({ row }) => <span className="font-monospace small text-primary">{row.original.assetId || '-'}</span> },
+        { accessorKey: 'requestedBy.fullName', header: 'Requested By', width: 180, cell: ({ row }) => (<button disabled={!isAdmin} onClick={() => handleUserClick(row.original.requestedBy)} className={`btn btn-link p-0 text-decoration-none d-flex align-items-center gap-2 text-start ${!isAdmin ? 'disabled text-dark' : 'text-primary'}`}> <img src={row.original.requestedBy.avatarUrl} alt={row.original.requestedBy.fullName} className="rounded-circle" style={{ width: '24px', height: '24px' }} /> <span className="small fw-medium text-truncate">{row.original.requestedBy.fullName}</span> </button>) },
+        { accessorKey: 'requestDate', header: 'Date', width: 120 },
+        { accessorKey: 'notes', header: 'Notes', width: 250, cell: ({ row }) => <span className="small text-secondary text-truncate d-inline-block" style={{ maxWidth: '200px' }} title={row.original.notes}>{row.original.notes || '-'}</span> },
+        {
+            accessorKey: 'status', header: 'Status', width: 150, cell: ({ row }) => {
                 const status = row.original.status;
                 const colorClasses = {
                     [RequestStatus.PENDING]: 'bg-warning-subtle text-warning border border-warning-subtle',
@@ -1548,7 +1602,7 @@ const App: React.FC = () => {
                 );
             }
         },
-        { accessorKey: 'actions', header: '', width: 120, cell: ({ row }) => (isAdmin && row.original.status === RequestStatus.PENDING) ? (<div className="d-flex gap-2"> <button onClick={() => handleRequestAction(row.original.id, RequestStatus.APPROVED)} className="btn btn-sm btn-success p-1" title="Approve"><Check size={16} /></button> <button onClick={() => handleRequestAction(row.original.id, RequestStatus.REJECTED)} className="btn btn-sm btn-danger p-1" title="Reject"><X size={16} /></button> </div>) : null, },
+        { accessorKey: 'actions', header: '', width: 100, cell: ({ row }) => (isAdmin && row.original.status === RequestStatus.PENDING) ? (<div className="d-flex gap-2"> <button onClick={() => handleRequestAction(row.original.id, RequestStatus.APPROVED)} className="btn btn-sm btn-success p-1" title="Approve"><Check size={16} /></button> <button onClick={() => handleRequestAction(row.original.id, RequestStatus.REJECTED)} className="btn btn-sm btn-danger p-1" title="Reject"><X size={16} /></button> </div>) : null, },
     ];
 
     const assetInstanceColumns: ColumnDef<Asset>[] = [
@@ -1635,8 +1689,15 @@ const App: React.FC = () => {
     const familiesWithCounts = useMemo(() => {
         return assetFamilies.map(family => {
             const instances = assets.filter(a => a.familyId === family.id);
-            const assignedCount = instances.filter(i => (i.assignedUser || (i.assignedUsers && i.assignedUsers.length > 0))).length;
-            return { ...family, total: instances.length, assigned: assignedCount, available: instances.length - assignedCount };
+            const total = family.totalCount || instances.length;
+            const assigned = instances.reduce((sum, a) => {
+                if (a.assetType === AssetType.LICENSE) {
+                    return sum + (a.assignedUsers?.length || 0);
+                } else {
+                    return sum + (a.assignedUser ? 1 : 0);
+                }
+            }, 0);
+            return { ...family, total, assigned, available: Math.max(0, total - assigned) };
         });
     }, [assetFamilies, assets]);
 

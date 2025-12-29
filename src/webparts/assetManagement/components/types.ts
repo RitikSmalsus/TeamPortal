@@ -4,24 +4,24 @@ import React from 'react';
 export type UserRole = 'admin' | 'user';
 
 export interface Vendor {
-    id: string;
-    name: string;
-    contactName?: string;
-    email?: string;
-    phone?: string;
-    website?: string;
-    notes?: string;
+  id: string;
+  name: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  notes?: string;
 }
 
 export interface AssignmentHistory {
-    id: string;
-    assetName: string;
-    assetId: string;
-    date: string;
-    type: 'Assigned' | 'Returned' | 'Lost' | 'Reassigned' | 'Usage Update';
-    notes?: string;
-    assignedTo?: string; // Name of user assigned to
-    assignedFrom?: string; // Name of previous user
+  id: string;
+  assetName: string;
+  assetId: string;
+  date: string;
+  type: 'Assigned' | 'Returned' | 'Lost' | 'Reassigned' | 'Usage Update';
+  notes?: string;
+  assignedTo?: string; // Name of user assigned to
+  assignedFrom?: string; // Name of previous user
 }
 
 export interface User {
@@ -91,6 +91,7 @@ export interface SoftwareProfile {
   responsibleUser: User;
   variants: LicenseVariant[];
   assignmentModel?: 'Single' | 'Multiple';
+  totalCount?: number;
 }
 
 // Defines license tiers under a Software Profile
@@ -99,26 +100,28 @@ export interface LicenseVariant {
   name: string;
   licenseType: LicenseType;
   cost: number;
+  totalCount: number;
   features?: string;
   userLimits?: number;
 }
 
 // Master record for a hardware product
 export interface HardwareProduct {
-    id: string;
-    assetType: AssetType.HARDWARE;
-    name: string;
-    productCode: string;
-    category: 'Laptop' | 'Monitor' | 'Keyboard' | 'Mac Mini' | 'Accessory';
-    manufacturer: string;
-    modelNumber?: string;
-    standardConfiguration?: string;
-    typicalUseCase?: string;
-    averageCostRange?: [number, number];
-    createdDate: string;
-    lastModifiedDate: string;
-    description?: string;
-    assignmentModel?: 'Single' | 'Multiple';
+  id: string;
+  assetType: AssetType.HARDWARE;
+  name: string;
+  productCode: string;
+  category: 'Laptop' | 'Monitor' | 'Keyboard' | 'Mac Mini' | 'Accessory';
+  manufacturer: string;
+  modelNumber?: string;
+  standardConfiguration?: string;
+  typicalUseCase?: string;
+  averageCostRange?: [number, number];
+  createdDate: string;
+  lastModifiedDate: string;
+  description?: string;
+  assignmentModel?: 'Single' | 'Multiple';
+  totalCount?: number;
 }
 
 export type AssetFamily = SoftwareProfile | HardwareProduct;
@@ -140,7 +143,7 @@ export interface Asset {
   maintenanceHistory?: { date: string; notes: string }[];
   assignmentHistory?: AssignmentHistory[];
   activeUsers?: User[];
-  
+
   // Software-specific fields
   assetType: AssetType;
   variantType?: string;
@@ -184,20 +187,20 @@ export enum LicenseType {
 }
 
 export enum ComplianceStatus {
-    COMPLIANT = 'Compliant',
-    PENDING_AUDIT = 'Pending Audit',
-    NON_COMPLIANT = 'Non-compliant',
+  COMPLIANT = 'Compliant',
+  PENDING_AUDIT = 'Pending Audit',
+  NON_COMPLIANT = 'Non-compliant',
 }
 
 export enum HardwareCondition {
-    NEW = 'New',
-    GOOD = 'Good',
-    FAIR = 'Fair',
-    POOR = 'Poor',
-    BROKEN = 'Broken',
-    WORKING = 'Working',
-    DAMAGED = 'Damaged',
-    NEEDS_REPAIR = 'Needs Repair',
+  NEW = 'New',
+  GOOD = 'Good',
+  FAIR = 'Fair',
+  POOR = 'Poor',
+  BROKEN = 'Broken',
+  WORKING = 'Working',
+  DAMAGED = 'Damaged',
+  NEEDS_REPAIR = 'Needs Repair',
 }
 
 export interface ColumnDef<T> {
@@ -243,40 +246,40 @@ export enum RequestStatus {
 }
 
 export interface Request {
-    id: string;
-    type: 'Hardware' | 'Software';
-    item: string;
-    requestedBy: User;
-    status: RequestStatus;
-    requestDate: string;
-    notes?: string;
-    assetId?: string;
-    familyId?: string;
-    linkedTaskId?: string;
+  id: string;
+  type: 'Hardware' | 'Software';
+  item: string;
+  requestedBy: User;
+  status: RequestStatus;
+  requestDate: string;
+  notes?: string;
+  assetId?: string;
+  familyId?: string;
+  linkedTaskId?: string;
 }
 
 export enum TaskPriority {
-    HIGH = 'High',
-    MEDIUM = 'Medium',
-    LOW = 'Low'
+  HIGH = 'High',
+  MEDIUM = 'Medium',
+  LOW = 'Low'
 }
 
 export enum TaskStatus {
-    TODO = 'To Do',
-    IN_PROGRESS = 'In Progress',
-    DONE = 'Done'
+  TODO = 'To Do',
+  IN_PROGRESS = 'In Progress',
+  DONE = 'Done'
 }
 
 export interface Task {
-    id: string;
-    requestId: string;
-    title: string;
-    assignedTo: User | null;
-    status: TaskStatus;
-    priority: TaskPriority;
-    dueDate: string;
-    description?: string;
-    createdDate: string;
+  id: string;
+  requestId: string;
+  title: string;
+  assignedTo: User | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: string;
+  description?: string;
+  createdDate: string;
 }
 
 export type IdSectionType = 'static' | 'attribute' | 'sequence' | 'date';

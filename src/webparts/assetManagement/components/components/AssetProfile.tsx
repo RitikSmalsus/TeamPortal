@@ -140,10 +140,16 @@ const AssetProfile: React.FC<AssetProfileProps> = ({ family, allAssets, onBack, 
     return allAssets.filter(a => a.familyId === family.id);
   }, [allAssets, family]);
 
-  const assignedCount = familyAssets.filter(a => (a.assignedUser || (a.assignedUsers && a.assignedUsers.length > 0))).length;
-  const totalAssets = familyAssets.length;
-
   const isSoftware = family.assetType === AssetType.LICENSE;
+
+  const totalAssets = family.totalCount || familyAssets.length;
+  const assignedCount = familyAssets.reduce((sum, a) => {
+    if (a.assetType === AssetType.LICENSE) {
+      return sum + (a.assignedUsers?.length || 0);
+    } else {
+      return sum + (a.assignedUser ? 1 : 0);
+    }
+  }, 0);
 
   const calculatePeriod = (purchase: string | undefined, renewal: string | undefined): string => {
     if (!purchase || !renewal) return '';
