@@ -10,6 +10,8 @@ interface EditProfileModalProps {
   onSave: (user: User) => void;
   user: User | null;
   config: Config;
+  getLibraryImages: () => Promise<Record<string, string[]>>;
+  onImageUpload: (file: File, folder: string) => Promise<string>;
 }
 
 const FormInput: React.FC<{ label: string; name: string; value?: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; placeholder?: string }> = ({ label, name, value, onChange, placeholder }) => (
@@ -41,9 +43,10 @@ const FormSelect: React.FC<{ label: string; name: string; value?: string; onChan
   </div>
 );
 
-const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, onSave, user, config }) => {
+const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, onSave, user, config, getLibraryImages, onImageUpload }) => {
   const [formData, setFormData] = useState<Partial<User>>({});
   const [activeTab, setActiveTab] = useState('');
+  const [libraryImages, setLibraryImages] = useState<Record<string, string[]>>({});
 
   const layout = config.modalLayouts?.userProfile || { tabs: [] };
 
@@ -53,8 +56,14 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, on
       if (layout.tabs && layout.tabs.length > 0) {
         setActiveTab(layout.tabs[0].id);
       }
+
+      const loadImages = async () => {
+        const images = await getLibraryImages();
+        setLibraryImages(images);
+      };
+      loadImages();
     }
-  }, [user, isOpen, layout]);
+  }, [user, isOpen, layout, getLibraryImages]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -140,6 +149,8 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onClose, on
           currentAvatar={formData.avatarUrl}
           onAvatarChange={handleAvatarChange}
           contactName={formData.fullName || ''}
+          libraryImages={libraryImages}
+          onImageUpload={onImageUpload}
         />
       );
 

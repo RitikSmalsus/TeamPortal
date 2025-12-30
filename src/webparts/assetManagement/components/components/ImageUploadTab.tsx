@@ -3,64 +3,52 @@ import React, { useState, useMemo } from 'react';
 import { X } from 'lucide-react';
 
 interface ImageUploadTabProps {
-  currentAvatar: string | undefined;
-  onAvatarChange: (newUrl: string | undefined) => void;
-  contactName: string;
+    currentAvatar: string | undefined;
+    onAvatarChange: (newUrl: string | undefined) => void;
+    contactName: string;
+    libraryImages: Record<string, string[]>;
+    onImageUpload: (file: File, folder: string) => Promise<string>;
 }
 
-const logoImages = [
-    'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?q=80&w=2069&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1529612453803-b038531649c5?q=80&w=2070&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=1974&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1611162616805-6a406b2a1a1a?q=80&w=1974&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1548345680-f5475ea5df84?q=80&w=2073&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?q=80&w=1889&auto=format&fit=crop',
-];
-
-const coverImages = [
-    'https://images.unsplash.com/photo-1549492423-400259a5e5a4?q=80&w=2070&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1473187983305-f61531474237?q=80&w=2070&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1506259996624-9f2f5e7b3b9b?q=80&w=2070&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1444044205806-38f376274260?q=80&w=2070&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1533109721025-d1ae7de64092?q=80&w=1887&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1496902526517-c0f2cb8fdb6a?q=80&w=2070&auto=format&fit=crop',
-];
-
-const generalImages = [
-    'https://images.unsplash.com/photo-1551887373-3c5bd21ffd05?q=80&w=1925&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1502920514358-906c5555a69e?q=80&w=2070&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1516048015710-7a3b4c86be43?q=80&w=1887&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1509223103693-5e7836798094?q=80&w=2069&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=1887&auto=format&fit=crop',
-    'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=1887&auto=format&fit=crop',
-];
+// Hardcoded fallback images removed, now using libraryImages from props
 
 const NavButton: React.FC<{ active?: boolean; onClick: () => void; children: React.ReactNode; }> = ({ active, onClick, children }) => (
     <button
         type="button"
         onClick={onClick}
-        className={`btn btn-sm w-100 text-start px-3 py-2 mb-1 border-0 rounded-2 ${
-            active
+        className={`btn btn-sm w-100 text-start px-3 py-2 mb-1 border-0 rounded-2 ${active
                 ? 'bg-primary-subtle text-primary fw-bold'
                 : 'btn-light text-secondary'
-        }`}
+            }`}
     >
         {children}
     </button>
 );
 
-const ImageUploadTab: React.FC<ImageUploadTabProps> = ({ currentAvatar, onAvatarChange, contactName }) => {
-    const [imageCategory, setImageCategory] = useState('Logos');
-    const [imageSourceTab, setImageSourceTab] = useState('existing');
+const ImageUploadTab: React.FC<ImageUploadTabProps> = ({ currentAvatar, onAvatarChange, contactName, libraryImages, onImageUpload }) => {
+    const [imageCategory, setImageCategory] = useState<string>('Logos');
+    const [imageSourceTab, setImageSourceTab] = useState<'existing' | 'upload'>('existing');
+    const [isUploading, setIsUploading] = useState(false);
 
     const activeGallery = useMemo(() => {
-        switch (imageCategory) {
-            case 'Logos': return logoImages;
-            case 'Covers': return coverImages;
-            case 'Images': return generalImages;
-            default: return [];
+        return libraryImages[imageCategory] || [];
+    }, [imageCategory, libraryImages]);
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        try {
+            const uploadedUrl = await onImageUpload(file, imageCategory);
+            onAvatarChange(uploadedUrl);
+            setImageSourceTab('existing');
+        } catch (error) {
+            alert("Upload failed. please try again.");
+        } finally {
+            setIsUploading(false);
         }
-    }, [imageCategory]);
+    };
 
     return (
         <div className="row g-4">
@@ -74,9 +62,9 @@ const ImageUploadTab: React.FC<ImageUploadTabProps> = ({ currentAvatar, onAvatar
                 {currentAvatar && (
                     <div className="card p-2 border-0 shadow-sm">
                         <img src={currentAvatar} alt="Current selection" className="card-img rounded-3" />
-                         <button 
-                            type="button" 
-                            onClick={() => onAvatarChange(undefined)} 
+                        <button
+                            type="button"
+                            onClick={() => onAvatarChange(undefined)}
                             className="btn btn-sm btn-outline-danger w-100 mt-2 d-flex align-items-center justify-content-center gap-2">
                             <X size={14} /> Clear Image
                         </button>
@@ -87,35 +75,35 @@ const ImageUploadTab: React.FC<ImageUploadTabProps> = ({ currentAvatar, onAvatar
             {/* Right Panel */}
             <div className="col-md-9">
                 <div className="row g-3 mb-4">
-                     <div className="col-md-6">
+                    <div className="col-md-6">
                         <label htmlFor="imageUrl" className="form-label small text-secondary fw-bold" style={{ fontSize: '10px' }}>Image URL</label>
-                        <input 
-                            type="text" 
-                            id="imageUrl" 
-                            name="imageUrl" 
-                            value={currentAvatar || ''} 
+                        <input
+                            type="text"
+                            id="imageUrl"
+                            name="imageUrl"
+                            value={currentAvatar || ''}
                             onChange={(e) => onAvatarChange(e.target.value)}
-                            className="form-control form-control-sm" 
+                            className="form-control form-control-sm"
                         />
                     </div>
                     <div className="col-md-6">
                         <label className="form-label small text-secondary fw-bold" style={{ fontSize: '10px' }}>Alternate Text</label>
-                        <input 
-                            type="text" 
-                            value={contactName} 
+                        <input
+                            type="text"
+                            value={contactName}
                             readOnly
-                            className="form-control form-control-sm bg-light" 
+                            className="form-control form-control-sm bg-light"
                         />
                     </div>
                 </div>
 
                 <div className="btn-group btn-group-sm w-100 bg-light p-1 rounded-3 mb-4">
-                     <button type="button" onClick={() => setImageSourceTab('existing')} className={`btn border-0 py-2 rounded-2 ${imageSourceTab === 'existing' ? 'bg-white shadow-sm text-primary fw-bold' : 'text-secondary'}`}>
+                    <button type="button" onClick={() => setImageSourceTab('existing')} className={`btn border-0 py-2 rounded-2 ${imageSourceTab === 'existing' ? 'bg-white shadow-sm text-primary fw-bold' : 'text-secondary'}`}>
                         Choose from existing ({activeGallery.length})
-                     </button>
-                     <button type="button" onClick={() => setImageSourceTab('upload')} className={`btn border-0 py-2 rounded-2 ${imageSourceTab === 'upload' ? 'bg-white shadow-sm text-primary fw-bold' : 'text-secondary'}`}>
+                    </button>
+                    <button type="button" onClick={() => setImageSourceTab('upload')} className={`btn border-0 py-2 rounded-2 ${imageSourceTab === 'upload' ? 'bg-white shadow-sm text-primary fw-bold' : 'text-secondary'}`}>
                         Upload
-                     </button>
+                    </button>
                 </div>
 
                 {imageSourceTab === 'existing' && (
@@ -134,11 +122,30 @@ const ImageUploadTab: React.FC<ImageUploadTabProps> = ({ currentAvatar, onAvatar
                     </div>
                 )}
 
-                 {imageSourceTab === 'upload' && (
-                    <div className="d-flex align-items-center justify-content-center border border-2 border-dashed rounded-4" style={{ height: '200px' }}>
-                        <p className="text-secondary small fst-italic">Upload functionality is not yet available.</p>
+                {imageSourceTab === 'upload' && (
+                    <div className="d-flex flex-column align-items-center justify-content-center border border-2 border-dashed rounded-4 p-4" style={{ height: '200px', backgroundColor: '#f8f9fa' }}>
+                        {isUploading ? (
+                            <div className="text-center">
+                                <div className="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+                                <p className="text-secondary small mb-0">Uploading to {imageCategory}...</p>
+                            </div>
+                        ) : (
+                            <>
+                                <input
+                                    type="file"
+                                    id="profile-image-upload"
+                                    className="d-none"
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                />
+                                <label htmlFor="profile-image-upload" className="btn btn-primary px-4 fw-bold shadow-sm mb-2">
+                                    Select Image File
+                                </label>
+                                <p className="text-secondary small fst-italic mb-0">Will be saved in {imageCategory} folder</p>
+                            </>
+                        )}
                     </div>
-                 )}
+                )}
             </div>
         </div>
     );

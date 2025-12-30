@@ -388,32 +388,34 @@ const App: React.FC = () => {
     const getMockUsers = async () => {
         const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         try {
-            const data = await res.lists.getByTitle("Contacts").items.getAll();
+            const data = await res.lists.getByTitle("Contacts").items.top(5000).get();
 
             // Fetch attachments for all users in parallel
             const usersWithAttachments = await Promise.all(
                 data.map(async (apiUser: any) => {
                     let avatarUrl = `https://i.pravatar.cc/150?u=${apiUser.GUID || apiUser.ID}`;
 
-                    try {
-                        // Fetch attachments for this user
-                        const attachments = await res.lists.getByTitle("Contacts")
-                            .items.getById(apiUser.ID)
-                            .attachmentFiles.get();
+                    // Priority 1: Check if avatarUrl is stored in Item_x0020_Cover field (most recent)
+                    if (apiUser.Item_x0020_Cover?.Url) {
+                        avatarUrl = apiUser.Item_x0020_Cover.Url;
+                    } else {
+                        // Priority 2: Fallback to attachments if no Comments URL
+                        try {
+                            const attachments = await res.lists.getByTitle("Contacts")
+                                .items.getById(apiUser.ID)
+                                .attachmentFiles.get();
 
-                        // Find profile picture attachment
-                        const profilePic = attachments.find((att: any) =>
-                            att.FileName.startsWith('profile_') ||
-                            att.FileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)
-                        );
+                            const profilePic = attachments.find((att: any) =>
+                                att.FileName.startsWith('profile_') ||
+                                att.FileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+                            );
 
-                        if (profilePic) {
-                            // Use SharePoint site URL + ServerRelativeUrl
-                            avatarUrl = `https://smalsusinfolabs.sharepoint.com${profilePic.ServerRelativeUrl}`;
+                            if (profilePic) {
+                                avatarUrl = `https://smalsusinfolabs.sharepoint.com${profilePic.ServerRelativeUrl}`;
+                            }
+                        } catch (attachmentError) {
+                            console.warn(`Could not fetch attachments for user ${apiUser.ID}:`, attachmentError);
                         }
-                    } catch (attachmentError) {
-                        console.warn(`Could not fetch attachments for user ${apiUser.ID}:`, attachmentError);
-                        // Continue with default avatar
                     }
 
                     return {
@@ -510,7 +512,7 @@ const App: React.FC = () => {
                     "maintenanceHistory"
                 )
                 .expand("assetRepo", "assignToUser")
-                .getAll();
+                .get();
             return items.map((item: any): Asset => {
                 /* ---------- Asset Type ---------- */
                 const assetType =
@@ -756,7 +758,7 @@ const App: React.FC = () => {
     const getMockVendors = async () => {
         const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         try {
-            const data = await res.lists.getByTitle("Vendors").items.getAll();
+            const data = await res.lists.getByTitle("Vendors").items.get();
             const formateData: Vendor[] = data.map((apiVendor: any) => ({
                 id: `v-${apiVendor.ID}`,
                 name: apiVendor.Title,
@@ -1299,12 +1301,64 @@ const App: React.FC = () => {
                 Email: user.email,
                 WebPage: user.webPage ? { Description: user.webPage, Url: user.webPage } : null,
                 LinkedIn: user.linkedin ? { Description: user.linkedin, Url: user.linkedin } : null,
-                Twitter: user.twitter ? { Description: user.twitter, Url: user.twitter } : null
+                Twitter: user.twitter ? { Description: user.twitter, Url: user.twitter } : null,
+                Item_x0020_Cover: user.avatarUrl ? { Description: user.avatarUrl, Url: user.avatarUrl } : null
             });
             console.log("User profile saved to SharePoint successfully.");
         } catch (error) {
             console.error("Error saving user profile to SharePoint:", error);
             alert("Changes were saved locally but failed to sync to SharePoint. Check console for details.");
+        }
+    };
+
+    const getLibraryImages = async () => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+        try {
+            const library = await res.lists.getByTitle("Images").expand("RootFolder").get();
+            const rootPath = library.RootFolder.ServerRelativeUrl;
+            console.log("Images Library Root Path:", rootPath);
+
+            const folders = ['Logos', 'Covers', 'Images', 'Test'];
+            const libraryImages: Record<string, string[]> = {};
+
+            await Promise.all(folders.map(async (folder) => {
+                try {
+                    const folderPath = `${rootPath}/${folder}`;
+                    const files = await res.getFolderByServerRelativeUrl(folderPath).files.get();
+                    // Use relative URL for better compatibility within same site
+                    libraryImages[folder] = files.map(f => f.ServerRelativeUrl);
+                    console.log(`Fetched ${files.length} images for ${folder}`);
+                } catch (e) {
+                    console.warn(`Could not fetch images for folder ${folder} at path ${rootPath}/${folder}:`, e);
+                    libraryImages[folder] = [];
+                }
+            }));
+
+            return libraryImages;
+        } catch (error) {
+            console.error("Error fetching library images:", error);
+            return {};
+        }
+    };
+
+    const handleImageUpload = async (file: File, folder: string) => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+        try {
+            const library = await res.lists.getByTitle("Images").expand("RootFolder").get();
+            const rootPath = library.RootFolder.ServerRelativeUrl;
+            const folderPath = `${rootPath}/${folder}`;
+
+            const fileName = `${Date.now()}_${file.name}`;
+            console.log(`Uploading ${fileName} to ${folderPath}`);
+
+            const result = await res.getFolderByServerRelativeUrl(folderPath).files.add(fileName, file, true);
+            const fullUrl = `https://smalsusinfolabs.sharepoint.com${result.data.ServerRelativeUrl}`;
+            console.log("Image uploaded successfully:", fullUrl);
+            return fullUrl;
+        } catch (error) {
+            console.error("Error uploading image to SharePoint:", error);
+            // Re-throw to be handled by the UI
+            throw error;
         }
     };
 
@@ -1650,6 +1704,7 @@ const App: React.FC = () => {
             )
         },
     ];
+    // test 
 
     const dashboardStats = useMemo(() => {
         if (isAdmin) {
@@ -2075,7 +2130,17 @@ const App: React.FC = () => {
                 />
             )}
 
-            {isProfileModalOpen && selectedUser && <EditProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} onSave={handleSaveUser} user={selectedUser} config={config} />}
+            {isProfileModalOpen && selectedUser && (
+                <EditProfileModal
+                    isOpen={isProfileModalOpen}
+                    onClose={() => setIsProfileModalOpen(false)}
+                    onSave={handleSaveUser}
+                    user={selectedUser}
+                    config={config}
+                    getLibraryImages={getLibraryImages}
+                    onImageUpload={handleImageUpload}
+                />
+            )}
             {isRequestModalOpen && requestingUser && <RequestAssetModal isOpen={isRequestModalOpen} onClose={closeRequestModal} onSubmit={handleSubmitRequest} user={requestingUser} assetFamilies={assetFamilies} category={requestCategory} />}
             {isTaskModalOpen && requestForTask && <TaskModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} request={requestForTask} adminUsers={adminUsers} onCreateTask={handleTaskSubmit} />}
         </div>

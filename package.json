@@ -23,6 +23,7 @@
     "lucide-react": "^0.561.0",
     "react": "17.0.1",
     "react-dom": "17.0.1",
+    "sp-pnp-js": "^3.0.1",
     "tslib": "2.3.1"
   },
   "devDependencies": {
