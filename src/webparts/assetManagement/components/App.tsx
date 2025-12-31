@@ -337,7 +337,7 @@ const App: React.FC = () => {
     const getMockAssetFamilies = async () => {
         const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         try {
-            const data = await res.lists.getByTitle("AssetRepository").items.select("ID", "Title", "Topic", "AssetType", "Prefix", "VendorName/Title", "StartDate", "EndDate", "TotalCount", "Variants", "Category", "AssignmentModel", "Description", "ProductCode", "configuration", "cost").expand("VendorName").get();
+            const data = await res.lists.getByTitle("AssetRepository").items.select("ID", "Title", "Topic", "AssetType", "Prefix", "VendorName/Title", "StartDate", "EndDate", "TotalCount", "Variants", "Category", "AssignmentModel", "Description", "ProductCode", "configuration", "cost").expand("VendorName").top(5000).get();
             console.log(data)
             const formattedData: AssetFamily[] = data.map((item: any) => {
                 const isHardware = item.AssetType === 'Hardware';
@@ -388,93 +388,81 @@ const App: React.FC = () => {
     const getMockUsers = async () => {
         const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         try {
-            const data = await res.lists.getByTitle("Contacts").items.top(5000).get();
+            const data = await res.lists.getByTitle("Contacts").items.select("*", "AttachmentFiles").expand("AttachmentFiles").top(5000).get();
 
-            // Fetch attachments for all users in parallel
-            const usersWithAttachments = await Promise.all(
-                data.map(async (apiUser: any) => {
-                    let avatarUrl = `https://i.pravatar.cc/150?u=${apiUser.GUID || apiUser.ID}`;
+            const usersWithAttachments = data.map((apiUser: any) => {
+                let avatarUrl = `https://i.pravatar.cc/150?u=${apiUser.GUID || apiUser.ID}`;
 
-                    // Priority 1: Check if avatarUrl is stored in Item_x0020_Cover field (most recent)
-                    if (apiUser.Item_x0020_Cover?.Url) {
-                        avatarUrl = apiUser.Item_x0020_Cover.Url;
-                    } else {
-                        // Priority 2: Fallback to attachments if no Comments URL
+                // Priority 1: Item_x0020_Cover
+                if (apiUser.Item_x0020_Cover && apiUser.Item_x0020_Cover.Url) {
+                    avatarUrl = apiUser.Item_x0020_Cover.Url;
+                }
+                // Priority 2: Attachments
+                else if (apiUser.AttachmentFiles && apiUser.AttachmentFiles.length > 0) {
+                    const profilePic = apiUser.AttachmentFiles.find((att: any) =>
+                        att.FileName.startsWith('profile_') ||
+                        att.FileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+                    ) || apiUser.AttachmentFiles[0];
+
+                    avatarUrl = `https://smalsusinfolabs.sharepoint.com${profilePic.ServerRelativeUrl}`;
+                }
+
+                return {
+                    id: apiUser.ID,
+                    fullName: apiUser.FullName || apiUser.Title,
+                    suffix: apiUser.Suffix,
+                    firstName: apiUser.FirstName || (apiUser.FullName || apiUser.Title)?.split(' ')[0] || '',
+                    lastName: (apiUser.FullName || apiUser.Title)?.split(' ').slice(1).join(' ') || '',
+                    email: apiUser.Email,
+                    avatarUrl,
+                    role: (apiUser.Role?.toLowerCase() || 'user') as UserRole,
+                    isVerified: apiUser.isVerified ?? false,
+                    jobTitle: apiUser.JobTitle || 'Employee',
+                    department: apiUser.Department || 'General',
+                    organization: apiUser.Company || 'Smalsus Infolabs Pvt Ltd',
+                    dateOfJoining: (apiUser.Date_x0020_Of_x0020_Joining ? getDate(apiUser.Date_x0020_Of_x0020_Joining) : null) || new Date().toISOString().split('T')[0],
+                    dateOfExit: apiUser.DateOfExit ? getDate(apiUser.DateOfExit) : null,
+                    businessPhone: apiUser.WorkPhone || '',
+                    mobileNo: apiUser.CellPhone || '',
+                    address: apiUser.WorkAddress || '',
+                    city: apiUser.WorkCity || '',
+                    postalCode: apiUser.WorkZip || '',
+                    userType:
+                        apiUser.User_x0020_Type === 'Internal'
+                            ? 'Internal User'
+                            : 'External User',
+                    extension: '',
+                    permissionGroups: [],
+                    principalName: apiUser.Email,
+                    userStatus: 'Active',
+                    userTypeDetail: 'Member',
+                    createdDate: apiUser.Created || new Date().toISOString(),
+                    modifiedDate: apiUser.Modified || new Date().toISOString(),
+                    createdBy: apiUser.Author || 'Admin',
+                    modifiedBy: apiUser.Editor || 'Admin',
+                    site: apiUser.Site || ['SMALSUS'],
+                    typeOfContact: ['Employee'],
+                    platformAccounts: [],
+                    history: (() => {
+                        // Parse userHistory from SharePoint (stored as JSON string)
                         try {
-                            const attachments = await res.lists.getByTitle("Contacts")
-                                .items.getById(apiUser.ID)
-                                .attachmentFiles.get();
-
-                            const profilePic = attachments.find((att: any) =>
-                                att.FileName.startsWith('profile_') ||
-                                att.FileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)
-                            );
-
-                            if (profilePic) {
-                                avatarUrl = `https://smalsusinfolabs.sharepoint.com${profilePic.ServerRelativeUrl}`;
+                            if (apiUser.userHistory) {
+                                const historyData = typeof apiUser.userHistory === 'string'
+                                    ? JSON.parse(apiUser.userHistory)
+                                    : apiUser.userHistory;
+                                return Array.isArray(historyData) ? historyData : [];
                             }
-                        } catch (attachmentError) {
-                            console.warn(`Could not fetch attachments for user ${apiUser.ID}:`, attachmentError);
+                        } catch (error) {
+                            console.warn(`Failed to parse userHistory for user ${apiUser.ID}:`, error);
                         }
-                    }
-
-                    return {
-                        id: apiUser.ID,
-                        fullName: apiUser.FullName || apiUser.Title,
-                        suffix: apiUser.Suffix,
-                        firstName: apiUser.FirstName || (apiUser.FullName || apiUser.Title)?.split(' ')[0] || '',
-                        lastName: (apiUser.FullName || apiUser.Title)?.split(' ').slice(1).join(' ') || '',
-                        email: apiUser.Email,
-                        avatarUrl,
-                        role: (apiUser.Role?.toLowerCase() || 'user') as UserRole,
-                        isVerified: apiUser.isVerified ?? false,
-                        jobTitle: apiUser.JobTitle || 'Employee',
-                        department: apiUser.Department || 'General',
-                        organization: apiUser.Company || 'Smalsus Infolabs Pvt Ltd',
-                        dateOfJoining: (apiUser.Date_x0020_Of_x0020_Joining ? getDate(apiUser.Date_x0020_Of_x0020_Joining) : null) || new Date().toISOString().split('T')[0],
-                        dateOfExit: apiUser.DateOfExit ? getDate(apiUser.DateOfExit) : null,
-                        businessPhone: apiUser.WorkPhone || '',
-                        mobileNo: apiUser.CellPhone || '',
-                        address: apiUser.WorkAddress || '',
-                        city: apiUser.WorkCity || '',
-                        postalCode: apiUser.WorkZip || '',
-                        userType:
-                            apiUser.User_x0020_Type === 'Internal'
-                                ? 'Internal User'
-                                : 'External User',
-                        extension: '',
-                        permissionGroups: [],
-                        principalName: apiUser.Email,
-                        userStatus: 'Active',
-                        userTypeDetail: 'Member',
-                        createdDate: apiUser.Created || new Date().toISOString(),
-                        modifiedDate: apiUser.Modified || new Date().toISOString(),
-                        createdBy: apiUser.Author || 'Admin',
-                        modifiedBy: apiUser.Editor || 'Admin',
-                        site: apiUser.Site || ['SMALSUS'],
-                        typeOfContact: ['Employee'],
-                        platformAccounts: [],
-                        history: (() => {
-                            // Parse userHistory from SharePoint (stored as JSON string)
-                            try {
-                                if (apiUser.userHistory) {
-                                    const historyData = typeof apiUser.userHistory === 'string'
-                                        ? JSON.parse(apiUser.userHistory)
-                                        : apiUser.userHistory;
-                                    return Array.isArray(historyData) ? historyData : [];
-                                }
-                            } catch (error) {
-                                console.warn(`Failed to parse userHistory for user ${apiUser.ID}:`, error);
-                            }
-                            return [];
-                        })(),
-                        linkedin: apiUser.LinkedIn?.Url || '',
-                        twitter: apiUser.Twitter?.Url || '',
-                        notes: apiUser.Comments || apiUser.Notes || '',
-                        gender: apiUser.Gender || ''
-                    };
-                })
-            );
+                        return [];
+                    })(),
+                    linkedin: apiUser.LinkedIn?.Url || '',
+                    twitter: apiUser.Twitter?.Url || '',
+                    notes: apiUser.Comments || apiUser.Notes || '',
+                    gender: apiUser.Gender || ''
+                };
+            });
             return usersWithAttachments;
         } catch (error) {
             console.log(error);
@@ -512,6 +500,7 @@ const App: React.FC = () => {
                     "maintenanceHistory"
                 )
                 .expand("assetRepo", "assignToUser")
+                .top(5000)
                 .get();
             return items.map((item: any): Asset => {
                 /* ---------- Asset Type ---------- */
@@ -590,7 +579,17 @@ const App: React.FC = () => {
                     familyId: item.assetRepo?.Id ? `repo-${item.assetRepo.Id}` : undefined,
                     title: item.Title,
 
-                    status: item.Status || AssetStatus.AVAILABLE,
+                    status: (() => {
+                        const s = item.Status || 'Available';
+                        // Normalize known statuses
+                        if (s.toLowerCase() === 'available') return AssetStatus.AVAILABLE;
+                        if (s.toLowerCase() === 'active') return AssetStatus.ACTIVE;
+                        if (s.toLowerCase() === 'expired') return AssetStatus.EXPIRED;
+                        if (s.toLowerCase() === 'retired') return AssetStatus.RETIRED;
+                        if (s.toLowerCase() === 'in repair') return AssetStatus.IN_REPAIR;
+                        if (s.toLowerCase() === 'pending') return AssetStatus.PENDING;
+                        return s as AssetStatus;
+                    })(),
                     assetType,
                     variantType: (() => {
                         const variant = item.LicenseType || "";
@@ -689,6 +688,7 @@ const App: React.FC = () => {
 
     const getMockRequests = async (allUsers: User[] = []) => {
         const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+        console.log("Fetching requests with Colleague's Strategy (Merged)... [TS: " + new Date().toISOString() + "]");
         try {
             const data = await res.lists.getByTitle("Request").items.select(
                 "Id",
@@ -697,38 +697,78 @@ const App: React.FC = () => {
                 "Status",
                 "Comment",
                 "RequestDate",
-                "AssetId",
                 "AssetFamily/Id",
                 "AssetFamily/Title",
                 "RequestedBy/Id",
-                "RequestedBy/FullName",
-                "RequestedBy/Email",
+                "RequestedBy/Title",
+                "Modified"
             )
                 .expand(
                     "AssetFamily",
                     "RequestedBy"
                 )
+                .orderBy("Modified", false)
                 .top(5000)
                 .get();
+
             const formateData: Request[] = data.map((apiItem: any) => {
 
-                // Robust user lookup
+                // Robust user lookup strategy
                 let requester: User | null = null;
                 const lookupUsers = allUsers.length > 0 ? allUsers : users;
 
-                if (apiItem.RequestedBy) {
-                    requester = lookupUsers.find(u =>
-                        String(u.id) === String(apiItem.RequestedBy.Id) ||
-                        (apiItem.RequestedBy.Email && u.email?.toLowerCase() === apiItem.RequestedBy.Email.toLowerCase())
-                    ) || null;
+                // 1. Try to find existing user in our full user list
+                if (apiItem.RequestedBy?.Id) {
+                    requester = lookupUsers.find(u => String(u.id) === String(apiItem.RequestedBy.Id)) || null;
                 }
 
-                // Fallback user if not found or expansion missing
+                // 2. If not found, construct from the expanded data (Fallback)
+                if (!requester && apiItem.RequestedBy) {
+                    const fullName = apiItem.RequestedBy.FullName || apiItem.RequestedBy.Title || "Unknown";
+                    const nameParts = fullName.split(" ");
+                    requester = {
+                        id: apiItem.RequestedBy.Id,
+                        fullName: fullName,
+                        firstName: nameParts[0],
+                        lastName: nameParts.slice(1).join(" ") || "",
+                        email: apiItem.RequestedBy.Email || "",
+                        avatarUrl: `https://i.pravatar.cc/150?u=${apiItem.RequestedBy.Id}`,
+                        role: "user",
+                        // Defaults for required fields
+                        isVerified: false,
+                        jobTitle: '',
+                        department: '',
+                        organization: '',
+                        dateOfJoining: '',
+                        dateOfExit: null,
+                        businessPhone: '',
+                        mobileNo: '',
+                        address: '',
+                        city: '',
+                        postalCode: '',
+                        userType: 'Internal',
+                        extension: '',
+                        permissionGroups: [],
+                        principalName: apiItem.RequestedBy.Email || '',
+                        userStatus: 'Active',
+                        userTypeDetail: '',
+                        createdDate: new Date().toISOString(),
+                        modifiedDate: new Date().toISOString(),
+                        createdBy: 'System',
+                        modifiedBy: 'System',
+                        site: [],
+                        typeOfContact: [],
+                        linkedin: '',
+                        twitter: ''
+                    } as User;
+                }
+
+                // 3. Ultimate Fallback
                 const safeRequester = requester || {
-                    id: apiItem.RequestedBy?.Id || apiItem.RequestedById || `u-${apiItem.Id}`,
-                    fullName: apiItem.RequestedBy?.FullName || apiItem.RequestedBy?.Title || "Unknown",
-                    email: apiItem.RequestedBy?.Email || "",
-                    avatarUrl: `https://i.pravatar.cc/150?u=${apiItem.RequestedBy?.Id || apiItem.Id}`,
+                    id: apiItem.RequestedBy?.Id || `u-${apiItem.Id}`,
+                    fullName: "Unknown User",
+                    email: "",
+                    avatarUrl: `https://i.pravatar.cc/150?u=${apiItem.Id}`,
                     role: "user",
                 } as User;
 
@@ -739,7 +779,15 @@ const App: React.FC = () => {
                     familyId: apiItem.AssetFamily?.Id ? `repo-${apiItem.AssetFamily.Id}` : undefined,
                     assetId: apiItem.AssetId,
                     requestedBy: safeRequester,
-                    status: (apiItem.Status as RequestStatus) || RequestStatus.PENDING,
+                    status: (() => {
+                        const s = apiItem.Status || 'Pending';
+                        if (s.toLowerCase() === 'pending') return RequestStatus.PENDING;
+                        if (s.toLowerCase() === 'approved') return RequestStatus.APPROVED;
+                        if (s.toLowerCase() === 'rejected') return RequestStatus.REJECTED;
+                        if (s.toLowerCase() === 'fulfilled') return RequestStatus.FULFILLED;
+                        if (s.toLowerCase() === 'in progress') return RequestStatus.IN_PROGRESS;
+                        return RequestStatus.PENDING;
+                    })(),
                     requestDate: apiItem.RequestDate
                         ? apiItem.RequestDate.split("T")[0]
                         : new Date().toISOString().split("T")[0],
@@ -750,7 +798,7 @@ const App: React.FC = () => {
             });
             return formateData;
         } catch (error) {
-            console.log("Error fetching requests:", error);
+            console.error("Error fetching requests:", error);
             return [];
         }
     }
@@ -758,7 +806,7 @@ const App: React.FC = () => {
     const getMockVendors = async () => {
         const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
         try {
-            const data = await res.lists.getByTitle("Vendors").items.get();
+            const data = await res.lists.getByTitle("Vendors").items.top(5000).get();
             const formateData: Vendor[] = data.map((apiVendor: any) => ({
                 id: `v-${apiVendor.ID}`,
                 name: apiVendor.Title,
@@ -869,7 +917,7 @@ const App: React.FC = () => {
         const isHardware = family.assetType === AssetType.HARDWARE;
         const spData: any = {
             Title: family.name,
-            AssetType: isHardware ? 'Hardware' : 'Software',
+            AssetType: isHardware ? 'Hardware' : 'License',
             Category: family.category,
             Description: family.description,
             AssignmentModel: family.assignmentModel,
@@ -929,7 +977,7 @@ const App: React.FC = () => {
                     Title: `${family.name} ${sequenceStart + i}`,
                     AssetId: assetId,
                     Status: AssetStatus.AVAILABLE,
-                    AssetType: family.assetType === AssetType.HARDWARE ? 'Hardware' : 'Software',
+                    AssetType: family.assetType === AssetType.HARDWARE ? 'Hardware' : 'License',
                     LicenseType: variantName,
                     purchaseDate: commonData.purchaseDate || new Date().toISOString().split('T')[0],
                     expiryDate: commonData.renewalDate || null,
@@ -1003,7 +1051,7 @@ const App: React.FC = () => {
             Title: asset.title,
             AssetId: asset.assetId,
             Status: asset.status,
-            AssetType: asset.assetType === AssetType.HARDWARE ? 'Hardware' : 'Software',
+            AssetType: asset.assetType === AssetType.HARDWARE ? 'Hardware' : 'License',
             LicenseType: asset.variantType,
             purchaseDate: asset.purchaseDate || null,
             expiryDate: (asset.renewalDate || asset.warrantyExpiryDate) || null,
@@ -1260,54 +1308,143 @@ const App: React.FC = () => {
         setIsAssetModalOpen(true);
     }
 
+    const handleAddTeamMember = () => {
+        const newUser: User = {
+            id: 'new-user',
+            fullName: '',
+            firstName: '',
+            lastName: '',
+            email: '',
+            avatarUrl: '',
+            role: 'user',
+            isVerified: false,
+            jobTitle: '',
+            department: '',
+            organization: '',
+            dateOfJoining: new Date().toISOString(),
+            dateOfExit: null,
+            businessPhone: '',
+            mobileNo: '',
+            address: '',
+            city: '',
+            postalCode: '',
+            country: '',
+            userType: 'Internal',
+            extension: '',
+            permissionGroups: [],
+            principalName: '',
+            userStatus: 'Active',
+            userTypeDetail: '',
+            createdDate: new Date().toISOString(),
+            modifiedDate: new Date().toISOString(),
+            createdBy: currentUser ? currentUser.fullName : 'System',
+            modifiedBy: currentUser ? currentUser.fullName : 'System',
+            site: [],
+            typeOfContact: [],
+            linkedin: '',
+            twitter: ''
+        };
+        setSelectedUser(newUser);
+        setIsProfileModalOpen(true);
+    };
+
     const handleSaveUser = async (user: User) => {
-        // Optimistic Update: Update local state immediately
-        const updatedUsers = users.map(u => u.id === user.id ? user : u);
-        setUsers(updatedUsers);
+        const isNewUser = user.id === 'new-user';
 
-        setAssets(prevAssets => prevAssets.map(asset => {
-            if (asset.assetType === AssetType.LICENSE && asset.assignedUsers?.some(u => u.id === user.id)) {
-                return { ...asset, assignedUsers: asset.assignedUsers.map(u => u.id === user.id ? user : u) };
+        if (isNewUser) {
+            // Optimistic Update: Add to local state via temp ID or wait for response
+            // We'll wait for response for new users to get true ID
+            try {
+                const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+                const result = await res.lists.getByTitle("Contacts").items.add({
+                    JobTitle: user.jobTitle,
+                    Department: user.department,
+                    WorkPhone: user.businessPhone,
+                    CellPhone: user.mobileNo,
+                    WorkAddress: user.address,
+                    WorkCity: user.city,
+                    WorkZip: user.postalCode,
+                    WorkCountry: user.country,
+                    Company: user.organization,
+                    FirstName: user.firstName,
+                    Title: user.lastName,
+                    FullName: user.fullName,
+                    Role: user.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : 'User',
+                    User_x0020_Type: user.userType,
+                    Date_x0020_Of_x0020_Joining: user.dateOfJoining,
+                    Email: user.email,
+                    WebPage: user.webPage ? { Description: user.webPage, Url: user.webPage } : null,
+                    LinkedIn: user.linkedin ? { Description: user.linkedin, Url: user.linkedin } : null,
+                    Twitter: user.twitter ? { Description: user.twitter, Url: user.twitter } : null,
+                    Item_x0020_Cover: user.avatarUrl ? {
+                        Description: user.fullName || user.firstName,
+                        Url: user.avatarUrl
+                    } : null
+                });
+
+                console.log("User created in SharePoint successfully.");
+                const newId = result.data.Id;
+                const savedUser = { ...user, id: newId };
+
+                setUsers(prev => [...prev, savedUser]);
+                setIsProfileModalOpen(false);
+            } catch (error) {
+                console.error("Error creating user in SharePoint:", error);
+                alert("Failed to create user in SharePoint. Check console for details.");
             }
-            if (asset.assetType === AssetType.HARDWARE && asset.assignedUser?.id === user.id) {
-                return { ...asset, assignedUser: user };
+        } else {
+            // Updated Existing User
+            // Optimistic Update: Update local state immediately
+            const updatedUsers = users.map(u => u.id === user.id ? user : u);
+            setUsers(updatedUsers);
+
+            setAssets(prevAssets => prevAssets.map(asset => {
+                if (asset.assetType === AssetType.LICENSE && asset.assignedUsers?.some(u => u.id === user.id)) {
+                    return { ...asset, assignedUsers: asset.assignedUsers.map(u => u.id === user.id ? user : u) };
+                }
+                if (asset.assetType === AssetType.HARDWARE && asset.assignedUser?.id === user.id) {
+                    return { ...asset, assignedUser: user };
+                }
+                return asset;
+            }));
+
+            if (selectedUser?.id === user.id) setSelectedUser(user);
+            if (currentUser?.id === user.id) setCurrentUser(user);
+            setIsProfileModalOpen(false);
+
+            // Persist Update to SharePoint
+            try {
+                const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+                await res.lists.getByTitle("Contacts").items.getById(Number(user.id)).update({
+                    JobTitle: user.jobTitle,
+                    Department: user.department,
+                    WorkPhone: user.businessPhone,
+                    CellPhone: user.mobileNo,
+                    WorkAddress: user.address,
+                    WorkCity: user.city,
+                    WorkZip: user.postalCode,
+                    WorkCountry: user.country,
+                    Company: user.organization,
+                    FirstName: user.firstName,
+                    Title: user.lastName,
+                    FullName: user.fullName,
+                    Role: user.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : 'User',
+                    User_x0020_Type: user.userType,
+                    Date_x0020_Of_x0020_Joining: user.dateOfJoining,
+                    Email: user.email,
+                    WebPage: user.webPage ? { Description: user.webPage, Url: user.webPage } : null,
+                    LinkedIn: user.linkedin ? { Description: user.linkedin, Url: user.linkedin } : null,
+                    Twitter: user.twitter ? { Description: user.twitter, Url: user.twitter } : null,
+                    Item_x0020_Cover: user.avatarUrl ? {
+                        Description: user.fullName || user.firstName,
+                        Url: user.avatarUrl
+                    } : null
+                });
+                console.log("User profile updated in SharePoint successfully.");
+            } catch (error) {
+                console.error("Error updating user profile in SharePoint:", error);
+                alert("Changes were saved locally but failed to sync to SharePoint. Check console for details.");
             }
-            return asset;
-        }));
-
-        if (selectedUser?.id === user.id) setSelectedUser(user);
-        if (currentUser?.id === user.id) setCurrentUser(user);
-        setIsProfileModalOpen(false);
-
-        // Persist to SharePoint
-        try {
-            const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
-            await res.lists.getByTitle("Contacts").items.getById(Number(user.id)).update({
-                JobTitle: user.jobTitle,
-                Department: user.department,
-                WorkPhone: user.businessPhone,
-                CellPhone: user.mobileNo,
-                WorkAddress: user.address,
-                WorkCity: user.city,
-                WorkZip: user.postalCode,
-                WorkCountry: user.country,
-                Company: user.organization,
-                FirstName: user.firstName,
-                Title: user.lastName,
-                FullName: user.fullName,
-                Role: user.role ? (user.role.charAt(0).toUpperCase() + user.role.slice(1)) : 'User',
-                User_x0020_Type: user.userType,
-                Date_x0020_Of_x0020_Joining: user.dateOfJoining,
-                Email: user.email,
-                WebPage: user.webPage ? { Description: user.webPage, Url: user.webPage } : null,
-                LinkedIn: user.linkedin ? { Description: user.linkedin, Url: user.linkedin } : null,
-                Twitter: user.twitter ? { Description: user.twitter, Url: user.twitter } : null,
-                Item_x0020_Cover: user.avatarUrl ? { Description: user.avatarUrl, Url: user.avatarUrl } : null
-            });
-            console.log("User profile saved to SharePoint successfully.");
-        } catch (error) {
-            console.error("Error saving user profile to SharePoint:", error);
-            alert("Changes were saved locally but failed to sync to SharePoint. Check console for details.");
         }
     };
 
@@ -1576,8 +1713,7 @@ const App: React.FC = () => {
             const requestNumericId = Number(request.id.replace('req-', ''));
             if (!isNaN(requestNumericId)) {
                 await res.lists.getByTitle("Request").items.getById(requestNumericId).update({
-                    Status: 'Fulfilled',
-                    AssetId: updatedAssetId
+                    Status: 'Fulfilled'
                 });
                 console.log("Request fulfillment persisted to SharePoint.");
             }
@@ -1848,7 +1984,7 @@ const App: React.FC = () => {
                             </div>
 
                             <div className="col-12 d-flex gap-3 overflow-auto pb-2">
-                                <button className="btn btn-white border shadow-sm d-flex align-items-center gap-2 text-nowrap" onClick={() => prompt('Feature not implemented')}>
+                                <button className="btn btn-white border shadow-sm d-flex align-items-center gap-2 text-nowrap" onClick={handleAddTeamMember}>
                                     <UserPlus size={16} className="text-primary" /> Add Team Member
                                 </button>
                                 <button className="btn btn-white border shadow-sm d-flex align-items-center gap-2 text-nowrap" onClick={() => { setEditingFamily(null); setModalMode('family'); setIsAssetModalOpen(true); }}>
