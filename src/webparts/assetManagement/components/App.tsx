@@ -92,18 +92,18 @@ const GlobalSearch: React.FC<{ users: User[], assets: Asset[], families: AssetFa
         if (!query) return { users: [], assets: [], families: [] };
         const q = query.toLowerCase();
         return {
-            users: users.filter(u => u.fullName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 3),
-            assets: assets.filter(a => a.title.toLowerCase().includes(q) || a.assetId.toLowerCase().includes(q)).slice(0, 3),
-            families: families.filter(f => f.name.toLowerCase().includes(q)).slice(0, 3)
+            users: users?.filter(u => String(u?.fullName || '').toLowerCase().includes(q) || String(u?.email || '').toLowerCase().includes(q)).slice(0, 3),
+            assets: assets?.filter(a => String(a?.title || '').toLowerCase().includes(q) || String(a?.assetId || '').toLowerCase().includes(q)).slice(0, 3),
+            families: families?.filter(f => String(f?.name || '').toLowerCase().includes(q)).slice(0, 3)
         }
     }, [query, users, assets, families]);
 
-    const hasResults = filteredResults.users.length > 0 || filteredResults.assets.length > 0 || filteredResults.families.length > 0;
+    const hasResults = filteredResults?.users?.length > 0 || filteredResults?.assets?.length > 0 || filteredResults?.families?.length > 0;
 
     return (
-        <div className="position-relative w-100 d-none d-lg-block" style={{ maxWidth: '450px' }}>
-            <div className="input-group">
-                <span className="input-group-text bg-light border-0"><Search size={16} className="text-secondary" /></span>
+        <div className="position-relative d-none d-lg-block" style={{ width: '350px', zIndex: 1001 }}>
+            <div className="d-flex align-items-center bg-light rounded-pill border ps-3 pe-2 py-1 shadow-sm-hover" style={{ transition: 'all 0.2s ease', border: '1px solid #dee2e6', position: 'relative', zIndex: 2 }}>
+                <Search size={16} className="text-secondary" />
                 <input
                     type="text"
                     placeholder="Search users, assets, products..."
@@ -111,15 +111,16 @@ const GlobalSearch: React.FC<{ users: User[], assets: Asset[], families: AssetFa
                     onChange={e => { setQuery(e.target.value); setIsOpen(true); }}
                     onFocus={() => setIsOpen(true)}
                     onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-                    className="form-control form-control-sm bg-light border-0 py-2"
+                    className="form-control-sm bg-transparent border-0 shadow-none w-100 ps-2 py-1"
+                    style={{ fontSize: '14px', outline: 'none' }}
                 />
             </div>
             {isOpen && query && hasResults && (
-                <div className="dropdown-menu show w-100 shadow border-light py-2 position-absolute mt-1">
-                    {filteredResults.users.length > 0 && (
+                <div className="dropdown-menu show shadow-lg border-light py-2 position-absolute" style={{ width: '100%', left: 0, top: '100%', marginTop: '8px', zIndex: 1050, borderRadius: '12px', display: 'block' }}>
+                    {filteredResults?.users?.length > 0 && (
                         <div>
                             <div className="dropdown-header text-uppercase small fw-bold bg-light py-2">Users</div>
-                            {filteredResults.users.map(u => (
+                            {filteredResults?.users?.map(u => (
                                 <button key={u.id} onMouseDown={() => onSelect('user', u)} className="dropdown-item d-flex align-items-center gap-2 py-2">
                                     <img src={u.avatarUrl} className="rounded-circle" style={{ width: '24px', height: '24px' }} />
                                     <span className="small text-dark">{u.fullName}</span>
@@ -127,10 +128,10 @@ const GlobalSearch: React.FC<{ users: User[], assets: Asset[], families: AssetFa
                             ))}
                         </div>
                     )}
-                    {filteredResults.assets.length > 0 && (
+                    {filteredResults?.assets?.length > 0 && (
                         <div>
                             <div className="dropdown-header text-uppercase small fw-bold bg-light py-2 border-top">Assets</div>
-                            {filteredResults.assets.map(a => (
+                            {filteredResults?.assets?.map(a => (
                                 <button key={a.id} onMouseDown={() => onSelect('asset', a)} className="dropdown-item py-2">
                                     <p className="small fw-medium mb-0 text-dark">{a.title}</p>
                                     <p className="mb-0 text-secondary font-monospace" style={{ fontSize: '11px' }}>{a.assetId}</p>
@@ -138,10 +139,10 @@ const GlobalSearch: React.FC<{ users: User[], assets: Asset[], families: AssetFa
                             ))}
                         </div>
                     )}
-                    {filteredResults.families.length > 0 && (
+                    {filteredResults?.families?.length > 0 && (
                         <div>
                             <div className="dropdown-header text-uppercase small fw-bold bg-light py-2 border-top">Products</div>
-                            {filteredResults.families.map(f => (
+                            {filteredResults?.families?.map(f => (
                                 <button key={f.id} onMouseDown={() => onSelect('family', f)} className="dropdown-item py-2">
                                     <p className="small fw-medium mb-0 text-dark">{f.name}</p>
                                     <p className="mb-0 text-secondary" style={{ fontSize: '11px' }}>{f.assetType}</p>
@@ -163,6 +164,58 @@ const App: React.FC = () => {
     const [requests, setRequests] = useState<Request[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [vendors, setVendors] = useState<Vendor[]>([]);
+    const handleUpdateVendors = async (newVendors: Vendor[]) => {
+        const res = new Web("https://smalsusinfolabs.sharepoint.com/sites/HHHHQA/AI");
+        try {
+            // Find what changed
+            if (newVendors.length > vendors.length) {
+                // ADD path
+                const addedVendor = newVendors.find(v => !vendors.some(old => old.id === v.id));
+                if (addedVendor) {
+                    const result = await res.lists.getByTitle("Vendors").items.add({
+                        Title: addedVendor.name,
+                        Website: { Url: addedVendor.website || '', Description: addedVendor.name },
+                        ContactName: addedVendor.contactName || '',
+                        Email: addedVendor.email || ''
+                    });
+                    // Replace temp id with real SP ID
+                    setVendors(newVendors.map(v => v.id === addedVendor.id ? { ...v, id: `v-${result.data.Id}` } : v));
+                    return;
+                }
+            } else if (newVendors.length < vendors.length) {
+                // DELETE path
+                const deletedVendor = vendors.find(v => !newVendors.some(n => n.id === v.id));
+                if (deletedVendor) {
+                    const spId = parseInt(deletedVendor.id.replace('v-', ''));
+                    if (!isNaN(spId)) {
+                        await res.lists.getByTitle("Vendors").items.getById(spId).delete();
+                    }
+                }
+            } else {
+                // UPDATE path
+                const updatedVendor = newVendors.find(v => {
+                    const old = vendors.find(o => o.id === v.id);
+                    return old && (old.name !== v.name || old.website !== v.website || old.contactName !== v.contactName || old.email !== v.email);
+                });
+                if (updatedVendor) {
+                    const spId = parseInt(updatedVendor.id.replace('v-', ''));
+                    if (!isNaN(spId)) {
+                        await res.lists.getByTitle("Vendors").items.getById(spId).update({
+                            Title: updatedVendor.name,
+                            Website: { Url: updatedVendor.website || '', Description: updatedVendor.name },
+                            ContactName: updatedVendor.contactName || '',
+                            Email: updatedVendor.email || ''
+                        });
+                    }
+                }
+            }
+            setVendors(newVendors);
+        } catch (error) {
+            console.error("Error updating vendors:", error);
+            const freshVendors = await getMockVendors();
+            setVendors(freshVendors);
+        }
+    };
 
     const [config, setConfig] = useState<Config>({
         softwareCategories: ['Microsoft', 'External'],
@@ -2204,7 +2257,7 @@ const App: React.FC = () => {
                     assets={assets}
                     families={assetFamilies}
                     vendors={vendors}
-                    onUpdateVendors={setVendors}
+                    onUpdateVendors={handleUpdateVendors}
                     onImportData={handleDataImport}
                     onNavigateToFamily={handleFamilyClick}
                     onEditFamily={handleEditFamily}
@@ -2217,7 +2270,7 @@ const App: React.FC = () => {
 
     return (
         <div className="d-flex flex-column min-vh-100 bg-light">
-            <header className="navbar navbar-expand-md navbar-light bg-white border-bottom sticky-top shadow-sm py-0">
+            <header className="navbar navbar-expand-md navbar-light bg-white border-bottom sticky-top shadow-sm py-0" style={{ zIndex: 1035 }}>
                 <div className="container-xl h-100">
                     <div className="d-flex align-items-center gap-4 flex-grow-1">
                         <div className="navbar-brand d-flex align-items-center gap-2 cursor-pointer py-0" onClick={() => handleNavigation('dashboard')} style={{ cursor: 'pointer' }}>
@@ -2232,7 +2285,7 @@ const App: React.FC = () => {
                             {isAdmin && <NavItem view="admin" label="Admin" icon={ShieldAlert} />}
                         </nav>
                     </div>
-                    <div className="flex-grow-1 px-4 mx-2">
+                    <div className="px-4 mx-2">
                         <GlobalSearch users={users} assets={assets} families={assetFamilies} onSelect={handleGlobalSearchSelect} />
                     </div>
                     <div className="d-flex align-items-center gap-3">
@@ -2277,7 +2330,7 @@ const App: React.FC = () => {
                     onImageUpload={handleImageUpload}
                 />
             )}
-            {isRequestModalOpen && requestingUser && <RequestAssetModal isOpen={isRequestModalOpen} onClose={closeRequestModal} onSubmit={handleSubmitRequest} user={requestingUser} assetFamilies={assetFamilies} category={requestCategory} />}
+            {isRequestModalOpen && requestingUser && <RequestAssetModal isOpen={isRequestModalOpen} onClose={closeRequestModal} onSubmit={handleSubmitRequest} user={requestingUser} assetFamilies={assetFamilies} allAssets={assets} category={requestCategory} />}
             {isTaskModalOpen && requestForTask && <TaskModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} request={requestForTask} adminUsers={adminUsers} onCreateTask={handleTaskSubmit} />}
         </div>
     );

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
-import { User, AssetFamily, AssetType, HardwareProduct, SoftwareProfile } from '../types';
+import { User, AssetFamily, AssetType, HardwareProduct, SoftwareProfile, Asset, AssetStatus } from '../types';
 
 interface RequestAssetModalProps {
   isOpen: boolean;
@@ -9,10 +9,11 @@ interface RequestAssetModalProps {
   onSubmit: (familyId: string, notes: string) => void;
   user: User;
   assetFamilies: AssetFamily[];
+  allAssets: Asset[];
   category: 'Microsoft' | 'External' | 'Hardware' | null;
 }
 
-const RequestAssetModal: React.FC<RequestAssetModalProps> = ({ isOpen, onClose, onSubmit, user, assetFamilies, category }) => {
+const RequestAssetModal: React.FC<RequestAssetModalProps> = ({ isOpen, onClose, onSubmit, user, assetFamilies, allAssets, category }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
@@ -83,22 +84,39 @@ const RequestAssetModal: React.FC<RequestAssetModalProps> = ({ isOpen, onClose, 
               </div>
 
               <div className="list-group list-group-flush border rounded-3 overflow-auto pr-2 mb-4" style={{ maxHeight: '300px' }}>
-                {searchedFamilies.length > 0 ? searchedFamilies.map(family => (
-                  <button
-                    key={family.id}
-                    onClick={() => setSelectedFamilyId(family.id)}
-                    className={`list-group-item list-group-item-action border-bottom p-3 text-start ${selectedFamilyId === family.id ? 'bg-primary-subtle border-primary border-2 z-1' : ''}`}
-                    type="button"
-                  >
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <p className={`fw-bold mb-0 ${selectedFamilyId === family.id ? 'text-primary' : 'text-dark'}`}>{family.name}</p>
-                      <span className={`badge ${family.assetType === AssetType.LICENSE ? 'text-bg-info' : 'text-bg-warning'} text-white`}>{family.assetType}</span>
-                    </div>
-                    <p className={`small mb-0 ${selectedFamilyId === family.id ? 'text-primary' : 'text-secondary'}`} style={{ fontSize: '12px' }}>
-                      {family.description || `${family.category} - ${family.assetType === AssetType.HARDWARE ? (family as HardwareProduct).manufacturer : (family as SoftwareProfile).vendor}`}
-                    </p>
-                  </button>
-                )) : (
+                {searchedFamilies.length > 0 ? searchedFamilies.map(family => {
+                  const familyAssets = allAssets.filter(a => a.familyId === family.id);
+                  const availableCount = familyAssets.filter(a => a.status === AssetStatus.AVAILABLE).length;
+                  const isOutOfStock = availableCount <= 0;
+
+                  return (
+                    <button
+                      key={family.id}
+                      onClick={() => !isOutOfStock && setSelectedFamilyId(family.id)}
+                      className={`list-group-item list-group-item-action border-bottom p-3 text-start 
+                        ${selectedFamilyId === family.id ? 'bg-primary-subtle border-primary border-2 z-1' : ''}
+                        ${isOutOfStock ? 'opacity-50 bg-light cursor-not-allowed' : ''}`}
+                      type="button"
+                      disabled={isOutOfStock}
+                    >
+                      <div className="d-flex justify-content-between align-items-center mb-1">
+                        <div className="d-flex align-items-center gap-2">
+                          <p className={`fw-bold mb-0 ${selectedFamilyId === family.id ? 'text-primary' : 'text-dark'}`}>{family.name}</p>
+                          {isOutOfStock && <span className="badge text-bg-danger" style={{ fontSize: '10px' }}>Out of Stock</span>}
+                        </div>
+                        <span className={`badge ${family.assetType === AssetType.LICENSE ? 'text-bg-info' : 'text-bg-warning'} text-white`}>{family.assetType}</span>
+                      </div>
+                      <div className="d-flex justify-content-between align-items-end">
+                        <p className={`small mb-0 ${selectedFamilyId === family.id ? 'text-primary' : 'text-secondary'}`} style={{ fontSize: '12px' }}>
+                          {family.description || `${family.category} - ${family.assetType === AssetType.HARDWARE ? (family as HardwareProduct).manufacturer : (family as SoftwareProfile).vendor}`}
+                        </p>
+                        <span className={`small fw-bold ${isOutOfStock ? 'text-danger' : 'text-success'}`} style={{ fontSize: '11px' }}>
+                          Available: {availableCount}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                }) : (
                   <div className="text-center py-5 text-secondary small fst-italic">
                     <p className="mb-0">No asset families found{category && ` in the ${category} category`}.</p>
                   </div>

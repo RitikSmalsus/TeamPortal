@@ -99,7 +99,14 @@ const BulkCreateModal: React.FC<{
                 label="Select Variant"
                 name="variant"
                 value={variantName}
-                onChange={(e) => setVariantName(e.target.value)}
+                onChange={(e) => {
+                  const selectedName = e.target.value;
+                  setVariantName(selectedName);
+                  const selectedVariant = family.variants.find(v => v.name === selectedName);
+                  if (selectedVariant) {
+                    setCost(selectedVariant.cost);
+                  }
+                }}
                 options={family.variants.map(v => ({ value: v.name, label: v.name }))}
               />
               <div className="row g-3">

@@ -97,7 +97,7 @@ const UserPicker: React.FC<UserPickerProps> = ({ users, selectedUserIds, onChang
     const [searchTerm, setSearchTerm] = useState('');
     const [isOpen, setIsOpen] = useState(false);
     const filteredUsers = useMemo(() => {
-        return users.filter(u => u.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || u.email.toLowerCase().includes(searchTerm.toLowerCase()));
+        return users.filter(u => u?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) || u?.email?.toLowerCase().includes(searchTerm.toLowerCase()));
     }, [users, searchTerm]);
     const handleSelect = (userId: number | string) => {
         if (multiple) {

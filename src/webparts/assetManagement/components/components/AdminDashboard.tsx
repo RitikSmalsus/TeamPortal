@@ -5,25 +5,28 @@ import { Asset, User, AssetFamily, Config, AssetType, IdSection, IdSectionType, 
 import DataImportModal, { ImportType } from './DataImportModal';
 import DataTable from './DataTable';
 import ModalSettingsEditor from './ModalSettingsEditor';
+import VendorFormModal from './VendorFormModal';
 
 interface AdminDashboardProps {
-  config: Config;
-  onUpdateConfig: (newConfig: Config) => void;
-  users: User[];
-  assets: Asset[];
-  families: AssetFamily[];
-  vendors: Vendor[];
-  onUpdateVendors: (vendors: Vendor[]) => void;
-  onImportData?: (type: ImportType, data: any[]) => void;
-  onNavigateToFamily?: (family: AssetFamily) => void;
-  onEditFamily?: (family: AssetFamily) => void;
-  onAddFamily?: () => void;
+    config: Config;
+    onUpdateConfig: (newConfig: Config) => void;
+    users: User[];
+    assets: Asset[];
+    families: AssetFamily[];
+    vendors: Vendor[];
+    onUpdateVendors: (vendors: Vendor[]) => void;
+    onImportData?: (type: ImportType, data: any[]) => void;
+    onNavigateToFamily?: (family: AssetFamily) => void;
+    onEditFamily?: (family: AssetFamily) => void;
+    onAddFamily?: () => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ config, onUpdateConfig, users, assets, families, vendors, onUpdateVendors, onImportData, onNavigateToFamily, onEditFamily, onAddFamily }) => {
     const [activeTab, setActiveTab] = useState<'general' | 'picklists' | 'ids' | 'data' | 'modals' | 'reports'>('picklists');
     const [metadataSubTab, setMetadataSubTab] = useState<'types' | 'products' | 'sites' | 'departments' | 'vendors'>('types');
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
+    const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
 
     const handleAddSimpleItem = (key: keyof Config, item: string) => {
         if (Array.isArray(config[key]) && !(config[key] as string[]).includes(item)) {
@@ -37,10 +40,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ config, onUpdateConfig,
     };
 
     const handleAddVendor = () => {
-        const name = prompt("Vendor Name:");
-        if (name) onUpdateVendors([...vendors, { id: `v-${Date.now()}`, name }]);
+        setEditingVendor(null);
+        setIsVendorModalOpen(true);
     };
-    const handleDeleteVendor = (id: string) => { if(confirm("Delete this vendor?")) onUpdateVendors(vendors.filter(v => v.id !== id)); };
+    const handleEditVendor = (vendor: Vendor) => {
+        setEditingVendor(vendor);
+        setIsVendorModalOpen(true);
+    };
+    const handleSaveVendor = (vendorData: Partial<Vendor>) => {
+        if (editingVendor) {
+            onUpdateVendors(vendors.map(v => v.id === editingVendor.id ? { ...v, ...vendorData } as Vendor : v));
+        } else {
+            onUpdateVendors([...vendors, { id: `v-${Date.now()}`, ...vendorData } as Vendor]);
+        }
+        setIsVendorModalOpen(false);
+    };
+    const handleDeleteVendor = (id: string) => { if (confirm("Delete this vendor?")) onUpdateVendors(vendors.filter(v => v.id !== id)); };
 
     const siteData = config.sites.map(s => ({ id: s, name: s }));
     const deptData = config.departments.map(d => ({ id: d, name: d }));
@@ -51,22 +66,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ config, onUpdateConfig,
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = `backup.json`; a.click();
     };
-    
+
     return (
         <div className="d-flex flex-column gap-4">
             <div className="card border-0 shadow-sm p-2 bg-white">
                 <nav className="nav nav-pills gap-2 flex-nowrap overflow-auto">
-                    <button onClick={() => setActiveTab('general')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'general' ? 'active' : 'text-secondary'}`}><Wrench size={16} className="me-2"/> General</button>
-                    <button onClick={() => setActiveTab('picklists')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'picklists' ? 'active' : 'text-secondary'}`}><List size={16} className="me-2"/> Picklists</button>
-                    <button onClick={() => setActiveTab('ids')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'ids' ? 'active' : 'text-secondary'}`}><Hash size={16} className="me-2"/> ID Config</button>
-                    <button onClick={() => setActiveTab('modals')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'modals' ? 'active' : 'text-secondary'}`}><Sliders size={16} className="me-2"/> Modals</button>
-                    <button onClick={() => setActiveTab('data')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'data' ? 'active' : 'text-secondary'}`}><Database size={16} className="me-2"/> Data</button>
-                    <button onClick={() => setActiveTab('reports')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'reports' ? 'active' : 'text-secondary'}`}><BarChart3 size={16} className="me-2"/> Reports</button>
+                    <button onClick={() => setActiveTab('general')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'general' ? 'active' : 'text-secondary'}`}><Wrench size={16} className="me-2" /> General</button>
+                    <button onClick={() => setActiveTab('picklists')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'picklists' ? 'active' : 'text-secondary'}`}><List size={16} className="me-2" /> Picklists</button>
+                    <button onClick={() => setActiveTab('ids')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'ids' ? 'active' : 'text-secondary'}`}><Hash size={16} className="me-2" /> ID Config</button>
+                    <button onClick={() => setActiveTab('modals')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'modals' ? 'active' : 'text-secondary'}`}><Sliders size={16} className="me-2" /> Modals</button>
+                    <button onClick={() => setActiveTab('data')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'data' ? 'active' : 'text-secondary'}`}><Database size={16} className="me-2" /> Data</button>
+                    <button onClick={() => setActiveTab('reports')} className={`nav-link btn-sm fw-bold border-0 ${activeTab === 'reports' ? 'active' : 'text-secondary'}`}><BarChart3 size={16} className="me-2" /> Reports</button>
                 </nav>
             </div>
 
             {activeTab === 'general' && (
-                <div className="card border-0 shadow-sm p-4" style={{maxWidth: '800px'}}>
+                <div className="card border-0 shadow-sm p-4" style={{ maxWidth: '800px' }}>
                     <h5 className="fw-bold mb-4">System Configuration</h5>
                     <div className="list-group list-group-flush">
                         <div className="list-group-item px-0 py-3 d-flex justify-content-between align-items-center">
@@ -82,7 +97,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ config, onUpdateConfig,
             )}
 
             {activeTab === 'picklists' && (
-                <div className="card border-0 shadow-sm overflow-hidden d-flex flex-column h-100" style={{minHeight: '600px'}}>
+                <div className="card border-0 shadow-sm overflow-hidden d-flex flex-column h-100" style={{ minHeight: '600px' }}>
                     <div className="card-header bg-light-subtle px-4 border-0">
                         <nav className="nav nav-underline small fw-bold text-uppercase gap-4">
                             <button onClick={() => setMetadataSubTab('types')} className={`nav-link py-3 ${metadataSubTab === 'types' ? 'active' : 'text-secondary'}`}>Types</button>
@@ -94,15 +109,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ config, onUpdateConfig,
                     </div>
                     <div className="card-body p-4 flex-grow-1 overflow-auto">
                         {metadataSubTab === 'types' && <DataTable columns={[{ accessorKey: 'name', header: 'Name' }, { accessorKey: 'prefix', header: 'Prefix' }]} data={assetTypesData} />}
-                        {metadataSubTab === 'products' && <DataTable columns={[{ accessorKey: 'name', header: 'Product', cell: ({row}) => <button onClick={() => onNavigateToFamily?.(row.original)} className="btn btn-link btn-sm p-0 fw-bold">{row.original.name}</button> }, { accessorKey: 'assetType', header: 'Type' }, { accessorKey: 'actions', header: '', cell: ({row}) => <button onClick={() => onEditFamily?.(row.original)} className="btn btn-sm btn-light p-1 text-secondary"><Edit2 size={16}/></button> }]} data={families} addButton={<button className="btn btn-sm btn-primary fw-bold" onClick={onAddFamily}>+ Add</button>} />}
-                        {metadataSubTab === 'vendors' && <DataTable columns={[{ accessorKey: 'name', header: 'Vendor' }, { accessorKey: 'website', header: 'URL', cell: ({row}) => row.original.website ? <a href={row.original.website} target="_blank" className="small text-truncate">{row.original.website}</a> : '-' }, { accessorKey: 'actions', header: '', cell: ({row}) => <button onClick={() => handleDeleteVendor(row.original.id)} className="btn btn-sm btn-light text-danger p-1"><Trash2 size={16}/></button> }]} data={vendors} addButton={<button className="btn btn-sm btn-primary fw-bold" onClick={handleAddVendor}>+ Add</button>} />}
-                        {metadataSubTab === 'sites' && <DataTable columns={[{ accessorKey: 'name', header: 'Site' }, { accessorKey: 'actions', header: '', cell: ({row}) => <button onClick={() => handleRemoveSimpleItem('sites', row.original.name)} className="btn btn-sm btn-light text-danger p-1"><Trash2 size={16}/></button> }]} data={siteData} addButton={<button className="btn btn-sm btn-primary fw-bold" onClick={() => { const s = prompt('New Site:'); if(s) handleAddSimpleItem('sites', s); }}>+ Add</button>} />}
-                        {metadataSubTab === 'departments' && <DataTable columns={[{ accessorKey: 'name', header: 'Department' }, { accessorKey: 'actions', header: '', cell: ({row}) => <button onClick={() => handleRemoveSimpleItem('departments', row.original.name)} className="btn btn-sm btn-light text-danger p-1"><Trash2 size={16}/></button> }]} data={deptData} addButton={<button className="btn btn-sm btn-primary fw-bold" onClick={() => { const d = prompt('New Dept:'); if(d) handleAddSimpleItem('departments', d); }}>+ Add</button>} />}
+                        {metadataSubTab === 'products' && <DataTable columns={[{ accessorKey: 'name', header: 'Product', cell: ({ row }) => <button onClick={() => onNavigateToFamily?.(row.original)} className="btn btn-link btn-sm p-0 fw-bold">{row.original.name}</button> }, { accessorKey: 'assetType', header: 'Type' }, { accessorKey: 'actions', header: '', cell: ({ row }) => <button onClick={() => onEditFamily?.(row.original)} className="btn btn-sm btn-light p-1 text-secondary"><Edit2 size={16} /></button> }]} data={families} addButton={<button className="btn btn-sm btn-primary fw-bold" onClick={onAddFamily}>+ Add</button>} />}
+                        {metadataSubTab === 'vendors' && <DataTable columns={[
+                            { accessorKey: 'name', header: 'Vendor' },
+                            { accessorKey: 'website', header: 'URL', cell: ({ row }) => row.original.website ? <a href={row.original.website} target="_blank" className="small text-truncate d-block" style={{ maxWidth: '150px' }}>{row.original.website}</a> : '-' },
+                            { accessorKey: 'contactName', header: 'Contact' },
+                            { accessorKey: 'email', header: 'Email', cell: ({ row }) => row.original.email ? <span className="small">{row.original.email}</span> : '-' },
+                            {
+                                accessorKey: 'actions', header: '', cell: ({ row }) => (
+                                    <div className="d-flex gap-1">
+                                        <button onClick={() => handleEditVendor(row.original)} className="btn btn-sm btn-light text-secondary p-1"><Edit2 size={16} /></button>
+                                        <button onClick={() => handleDeleteVendor(row.original.id)} className="btn btn-sm btn-light text-danger p-1"><Trash2 size={16} /></button>
+                                    </div>
+                                )
+                            }
+                        ]} data={vendors} addButton={<button className="btn btn-sm btn-primary fw-bold" onClick={handleAddVendor}>+ Add</button>} />}
+                        {metadataSubTab === 'sites' && <DataTable columns={[{ accessorKey: 'name', header: 'Site' }, { accessorKey: 'actions', header: '', cell: ({ row }) => <button onClick={() => handleRemoveSimpleItem('sites', row.original.name)} className="btn btn-sm btn-light text-danger p-1"><Trash2 size={16} /></button> }]} data={siteData} addButton={<button className="btn btn-sm btn-primary fw-bold" onClick={() => { const s = prompt('New Site:'); if (s) handleAddSimpleItem('sites', s); }}>+ Add</button>} />}
+                        {metadataSubTab === 'departments' && <DataTable columns={[{ accessorKey: 'name', header: 'Department' }, { accessorKey: 'actions', header: '', cell: ({ row }) => <button onClick={() => handleRemoveSimpleItem('departments', row.original.name)} className="btn btn-sm btn-light text-danger p-1"><Trash2 size={16} /></button> }]} data={deptData} addButton={<button className="btn btn-sm btn-primary fw-bold" onClick={() => { const d = prompt('New Dept:'); if (d) handleAddSimpleItem('departments', d); }}>+ Add</button>} />}
                     </div>
                 </div>
             )}
-            
-            {activeTab === 'modals' && <div className="card border-0 shadow-sm" style={{height: '600px'}}><ModalSettingsEditor config={config} onUpdateConfig={onUpdateConfig} /></div>}
+
+            {activeTab === 'modals' && <div className="card border-0 shadow-sm" style={{ height: '600px' }}><ModalSettingsEditor config={config} onUpdateConfig={onUpdateConfig} /></div>}
             {activeTab === 'data' && (
                 <div className="card border-0 shadow-sm p-5 text-center">
                     <h5 className="fw-bold mb-4">Database Operations</h5>
@@ -113,6 +141,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ config, onUpdateConfig,
                 </div>
             )}
             {activeTab === 'reports' && <div className="card border-0 shadow-sm p-5 text-center bg-light-subtle"><h2 className="fw-bold text-secondary">Advanced Reporting</h2><p className="text-secondary mt-2">Analytics modules for cost optimization and lifecycle tracking coming soon.</p></div>}
+            <VendorFormModal isOpen={isVendorModalOpen} onClose={() => setIsVendorModalOpen(false)} onSave={handleSaveVendor} vendor={editingVendor} />
             {onImportData && <DataImportModal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} onImport={onImportData} existingFamilies={families.map(f => ({ id: f.id, name: f.name, type: f.assetType }))} />}
         </div>
     );
